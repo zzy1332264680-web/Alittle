@@ -1,4 +1,4 @@
-// src/pages/Forum.jsx 完整论坛页面
+// src/pages/Forum.jsx 完整论坛页面（支持用户头像）
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import request from '../api/request';
@@ -52,13 +52,17 @@ const Forum = () => {
         ) : posts.length > 0 ? (
           posts.map((post) => (
             <div key={post.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-              {/* 帖子头部：作者信息 */}
+              {/* 帖子头部：作者信息（支持用户头像） */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold overflow-hidden">
                     {post.is_anonymous 
                       ? '匿' 
-                      : (post.publisher_name || 'U').charAt(0).toUpperCase()
+                      : post.publisher_avatar ? (
+                        <img src={post.publisher_avatar} alt="作者头像" className="w-full h-full object-cover" />
+                      ) : (
+                        (post.publisher_name || 'U').charAt(0).toUpperCase()
+                      )
                     }
                   </div>
                   <div>

@@ -43,7 +43,7 @@ const Home = () => {
     <div className="max-w-6xl mx-auto">
       {/* 首页欢迎区 */}
       <div className="text-center mb-12 pt-8">
-        <h2 className="text-3xl font-bold text-gray-800 mb-4">欢迎来到 Little Shop</h2>
+        <h2 className="text-3xl font-bold text-gray-800 mb-4">欢迎来到 Alittle</h2>
         <p className="text-gray-600 text-lg">选择下方功能，开始你的体验</p>
       </div>
 

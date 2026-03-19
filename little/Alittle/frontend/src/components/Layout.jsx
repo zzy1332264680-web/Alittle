@@ -1,4 +1,4 @@
-// src/components/Layout.jsx 带头像下拉菜单的全局布局
+// src/components/Layout.jsx 带头像下拉菜单+个人中心导航的全局布局（支持用户头像）
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useState, useRef, useEffect } from 'react';
@@ -30,12 +30,13 @@ const Layout = () => {
     navigate('/login');
   };
 
-  // 导航菜单数据
+  // 导航菜单数据（新增个人中心）
   const navItems = [
     { path: '/', label: '首页' },
     { path: '/chat', label: '好友聊天' },
     { path: '/forum', label: '论坛发帖' },
-    { path: '/market', label: '闲置交易' }
+    { path: '/market', label: '闲置交易' },
+    { path: '/dashboard', label: '个人中心' }
   ];
 
   // 下拉菜单数据
@@ -53,7 +54,7 @@ const Layout = () => {
         {/* 顶部栏：Logo + 头像下拉菜单 */}
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
           <h1 className="text-xl font-bold cursor-pointer" onClick={() => navigate('/')}>
-            Little Shop
+            Alittle
           </h1>
           
           {/* 头像下拉菜单 */}
@@ -62,9 +63,13 @@ const Layout = () => {
               onClick={() => setShowDropdown(!showDropdown)}
               className="flex items-center gap-2 hover:bg-blue-700 px-3 py-2 rounded-md transition-colors"
             >
-              {/* 头像 */}
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
-                {(userInfo.username || 'U').charAt(0).toUpperCase()}
+              {/* 头像（支持用户上传的头像） */}
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold overflow-hidden">
+                {userInfo.avatar ? (
+                  <img src={userInfo.avatar} alt="头像" className="w-full h-full object-cover" />
+                ) : (
+                  (userInfo.username || 'U').charAt(0).toUpperCase()
+                )}
               </div>
               <span className="text-sm">{userInfo.username || '用户'}</span>
               <span className={`transform transition-transform ${showDropdown ? 'rotate-180' : ''}`}>▼</span>
@@ -129,7 +134,7 @@ const Layout = () => {
       
       {/* 底部 */}
       <footer className="bg-gray-200 py-4 px-6 text-center text-gray-600 text-sm">
-        © 2026 Little Shop 版权所有
+        © 2026 Alittle 版权所有
       </footer>
     </div>
   );

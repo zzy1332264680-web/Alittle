@@ -10,10 +10,12 @@ import Home from './pages/Home.jsx';
 // 导入新增的功能页面
 import Chat from './pages/Chat.jsx';
 import Forum from './pages/Forum.jsx';
-import CreatePost from './pages/CreatePost.jsx'; // 发布帖子
+import CreatePost from './pages/CreatePost.jsx'; // 发布/编辑帖子
+import CreateGoods from './pages/CreateGoods.jsx'; // 发布/编辑闲置商品
 import Market from './pages/Market.jsx';
 import Profile from './pages/Profile.jsx'; // 个人中心
 import Settings from './pages/Settings.jsx'; // 设置
+import Dashboard from './pages/Dashboard.jsx'; // 个人中心管理页面
 
 function App() {
   return (
@@ -39,9 +41,13 @@ function App() {
             <Route path="chat" element={<Chat />} /> {/* 好友聊天 */}
             <Route path="forum" element={<Forum />} /> {/* 论坛列表 */}
             <Route path="forum/create" element={<CreatePost />} /> {/* 发布帖子 */}
+            <Route path="forum/edit/:id" element={<CreatePost />} /> {/* 编辑帖子 */}
             <Route path="market" element={<Market />} /> {/* 闲置交易 */}
+            <Route path="market/create" element={<CreateGoods />} /> {/* 发布闲置商品 */}
+            <Route path="market/edit/:id" element={<CreateGoods />} /> {/* 编辑闲置商品 */}
             <Route path="profile" element={<Profile />} /> {/* 个人中心 */}
             <Route path="settings" element={<Settings />} /> {/* 设置 */}
+            <Route path="dashboard" element={<Dashboard />} /> {/* 个人中心管理 */}
           </Route>
           
           {/* 兜底路由：所有未匹配的地址，强制跳转到登录页 */}

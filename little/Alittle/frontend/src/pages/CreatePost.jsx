@@ -1,10 +1,12 @@
-// src/pages/CreatePost.jsx 完整发布帖子页面
+// src/pages/CreatePost.jsx 完整发布/编辑帖子页面
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import request from '../api/request';
 
 const CreatePost = () => {
   const navigate = useNavigate();
+  const { id } = useParams(); // 获取帖子ID（编辑模式）
+  const isEditMode = !!id;
   const fileInputRef = useRef(null);
   const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
 
@@ -26,29 +28,47 @@ const CreatePost = () => {
   // 状态
   const [loading, setLoading] = useState(false);
   const [uploadingImages, setUploadingImages] = useState([]);
+  const [fetchingPost, setFetchingPost] = useState(false);
 
   // 字数限制
   const TITLE_MAX = 200;
   const CONTENT_MAX = 10000;
   const IMAGE_MAX = 9;
 
-  // ===================== 草稿逻辑：页面加载时恢复草稿 =====================
-  useEffect(() => {
-    const savedDraft = localStorage.getItem('post_draft');
-    if (savedDraft) {
-      try {
-        const draft = JSON.parse(savedDraft);
-        setForm(draft);
-      } catch (e) {
-        console.error('草稿解析失败', e);
+  // ===================== 编辑模式：获取帖子详情 =====================
+  const getPostDetail = async () => {
+    if (!isEditMode) return;
+    try {
+      setFetchingPost(true);
+      // 这里可以复用获取帖子列表的逻辑，或者新增一个获取详情的接口
+      // 暂时先从我的帖子列表里找
+      const res = await request.get('/api/my/posts', { params: { user_id: userInfo.id } });
+      if (res.code === 200) {
+        const post = res.data.find(p => p.id === Number(id));
+        if (post) {
+          setForm({
+            title: post.title,
+            content: post.content,
+            images: post.images || [],
+            topics: post.topics || [],
+            isAnonymous: !!post.is_anonymous,
+            visibility: post.visibility || 'public'
+          });
+        } else {
+          alert('帖子不存在或无权编辑');
+          navigate('/dashboard');
+        }
       }
+    } catch (err) {
+      console.error('获取帖子详情失败', err);
+    } finally {
+      setFetchingPost(false);
     }
-  }, []);
+  };
 
-  // ===================== 草稿逻辑：内容变化时自动保存 =====================
   useEffect(() => {
-    localStorage.setItem('post_draft', JSON.stringify(form));
-  }, [form]);
+    getPostDetail();
+  }, [id]);
 
   // ===================== 获取话题列表 =====================
   const getTopics = async () => {
@@ -187,39 +207,56 @@ const CreatePost = () => {
     return true;
   };
 
-  // ===================== 发布帖子 =====================
+  // ===================== 发布/修改帖子 =====================
   const handlePublish = async () => {
     if (!validateForm()) return;
 
     try {
       setLoading(true);
-      const res = await request.post('/api/posts/publish', {
-        user_id: userInfo.id,
-        title: form.title,
-        content: form.content,
-        images: form.images,
-        topics: form.topics,
-        is_anonymous: form.isAnonymous,
-        visibility: form.visibility
-      });
+      let res;
+      
+      if (isEditMode) {
+        // 编辑模式
+        res = await request.put('/api/posts/update', {
+          post_id: id,
+          user_id: userInfo.id,
+          title: form.title,
+          content: form.content,
+          images: form.images,
+          topics: form.topics,
+          is_anonymous: form.isAnonymous,
+          visibility: form.visibility
+        });
+      } else {
+        // 发布模式
+        res = await request.post('/api/posts/publish', {
+          user_id: userInfo.id,
+          title: form.title,
+          content: form.content,
+          images: form.images,
+          topics: form.topics,
+          is_anonymous: form.isAnonymous,
+          visibility: form.visibility
+        });
+      }
 
       if (res.code === 200) {
-        alert('发布成功！');
+        alert(isEditMode ? '修改成功！' : '发布成功！');
         // 清除草稿
         localStorage.removeItem('post_draft');
-        // 跳回论坛列表
-        navigate('/forum');
+        // 跳回个人中心
+        navigate('/dashboard');
       } else {
-        alert(res.msg || '发布失败，请重试');
+        alert(res.msg || '操作失败，请重试');
       }
     } catch (err) {
-      console.error('发布失败', err);
+      console.error('操作失败', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // ===================== 取消发布 =====================
+  // ===================== 取消 =====================
   const handleCancel = () => {
     const hasContent = form.title.trim() || form.content.trim() || form.images.length > 0;
     if (hasContent) {
@@ -229,16 +266,28 @@ const CreatePost = () => {
     }
     // 清除草稿
     localStorage.removeItem('post_draft');
-    navigate('/forum');
+    navigate('/dashboard');
   };
+
+  if (fetchingPost) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-12">
+        <p className="text-gray-500">加载中...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto">
       {/* 页面头部 */}
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">发布帖子</h2>
-          <p className="text-gray-600">分享你的想法，和大家一起讨论</p>
+          <h2 className="text-3xl font-bold text-gray-800 mb-2">
+            {isEditMode ? '修改帖子' : '发布帖子'}
+          </h2>
+          <p className="text-gray-600">
+            {isEditMode ? '修改你的帖子内容' : '分享你的想法，和大家一起讨论'}
+          </p>
         </div>
       </div>
 
@@ -471,7 +520,7 @@ const CreatePost = () => {
             disabled={loading}
             className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-blue-400 transition-colors"
           >
-            {loading ? '发布中...' : '发布帖子'}
+            {loading ? '操作中...' : (isEditMode ? '保存修改' : '发布帖子')}
           </button>
         </div>
       </div>
