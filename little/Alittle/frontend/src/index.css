@@ -1,0 +1,26 @@
+/* 引入 Inter 字体 */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Tailwind 核心指令 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 全局样式重置 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  @apply font-inter bg-neutral text-gray-800; /* 全局字体 + 背景色 */
+}
+
+/* 自定义通用样式 */
+.btn-primary {
+  @apply bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/90 transition-colors;
+}
+.input-default {
+  @apply w-full px-4 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50;
+}

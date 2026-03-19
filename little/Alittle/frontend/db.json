@@ -1,0 +1,22 @@
+{
+  "login": {
+    "token": "test-token-123456",
+    "userId": "user123"
+  },
+  "goods": [
+    {
+      "id": 1,
+      "name": "极简无线耳机",
+      "price": 199,
+      "createTime": "2025-01-01 10:00:00",
+      "image": "https://via.placeholder.com/300x200?text=耳机"
+    },
+    {
+      "id": 2,
+      "name": "轻薄笔记本电脑",
+      "price": 3999,
+      "createTime": "2025-01-02 14:00:00",
+      "image": "https://via.placeholder.com/300x200?text=笔记本"
+    }
+  ]
+}
