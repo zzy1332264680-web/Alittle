@@ -1,87 +1,1161 @@
-// src/pages/Chat.jsx 适配后的聊天页面
-import { useState } from 'react';
-// 注意：如果你的项目里没有 useSocket，可以先注释掉相关代码，用模拟数据
-// import { useSocket } from '../hooks/useSocket';
+// src/pages/Chat.jsx 毕业设计级完整聊天页面（含好友系统+消息归属修复+会话右键菜单）
+import { useState, useEffect, useRef, useCallback } from 'react';
+import request from '../api/request';
 
 const Chat = () => {
-  // 模拟消息数据（如果没有 useSocket）
-  const [messages, setMessages] = useState([
-    { userId: '用户1', time: '20:00', content: '你好！欢迎使用聊天功能' },
-    { userId: '用户2', time: '20:01', content: '你好！这个功能看起来不错' }
-  ]);
+  const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+  const messagesEndRef = useRef(null);
+  const messageContainerRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const imagePreviewRef = useRef(null);
+  
+  // 状态
+  const [activeTab, setActiveTab] = useState('conversation');
+  const [conversations, setConversations] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [messageOffset, setMessageOffset] = useState(0);
+  const [showExtensionMenu, setShowExtensionMenu] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
+  const [isTyping, setIsTyping] = useState(false);
+  
+  // 右键菜单相关
+  const [messageContextMenu, setMessageContextMenu] = useState(null); // 消息右键
+  const [convContextMenu, setConvContextMenu] = useState(null); // 会话右键
+  
+  // 新增：添加好友相关状态
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [applyReason, setApplyReason] = useState('我想添加你为好友');
+  const [friendApplies, setFriendApplies] = useState([]);
 
-  // 发送消息（模拟）
-  const handleSend = (e) => {
-    e.preventDefault();
-    if (!inputValue.trim()) return;
-    // 添加新消息
-    setMessages([
-      ...messages,
-      {
-        userId: '我',
-        time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-        content: inputValue.trim()
+  const PAGE_SIZE = 20;
+
+  // 滚动到底部
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  // 滚动到顶部
+  const scrollToTop = useCallback(() => {
+    if (messageContainerRef.current) {
+      messageContainerRef.current.scrollTop = 100;
+    }
+  }, []);
+
+  // 获取会话列表（过滤已隐藏的）
+  const getConversations = async () => {
+    try {
+      const res = await request.get('/api/chat/conversations', { 
+        params: { user_id: userInfo.id } 
+      });
+      if (res.code === 200) {
+        // 前端也过滤一遍：只显示 is_hidden !== 1 的
+        const visibleConvs = (res.data || []).filter(conv => !conv.is_hidden);
+        setConversations(visibleConvs);
       }
-    ]);
-    setInputValue('');
+    } catch (err) {
+      console.error('获取会话列表失败', err);
+    }
+  };
+
+  // 获取好友列表
+  const getFriends = async () => {
+    try {
+      const res = await request.get('/api/friend/list', { 
+        params: { user_id: userInfo.id } 
+      });
+      if (res.code === 200) {
+        setFriends(res.data);
+      }
+    } catch (err) {
+      console.error('获取好友列表失败', err);
+    }
+  };
+
+  // 获取好友申请列表
+  const getFriendApplies = async () => {
+    try {
+      const res = await request.get('/api/friend/apply/list', { 
+        params: { user_id: userInfo.id } 
+      });
+      if (res.code === 200) {
+        setFriendApplies(res.data);
+      }
+    } catch (err) {
+      console.error('获取好友申请失败', err);
+    }
+  };
+
+  // 搜索用户
+  const handleSearchUser = async () => {
+    if (!searchKeyword.trim()) return;
+    
+    try {
+      setSearching(true);
+      const res = await request.get('/api/user/search', {
+        params: { 
+          keyword: searchKeyword.trim(), 
+          exclude_user_id: userInfo.id 
+        }
+      });
+      if (res.code === 200) {
+        setSearchResults(res.data);
+      }
+    } catch (err) {
+      console.error('搜索用户失败', err);
+      alert('搜索失败');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // 发送好友申请
+  const handleSendApply = async (targetUser) => {
+    if (!applyReason.trim()) {
+      alert('请输入申请理由');
+      return;
+    }
+
+    try {
+      const res = await request.post('/api/friend/apply', {
+        from_user_id: userInfo.id,
+        to_user_id: targetUser.id,
+        apply_reason: applyReason.trim()
+      });
+      
+      if (res.code === 200) {
+        alert('好友申请已发送');
+        setShowAddFriendModal(false);
+        setSearchKeyword('');
+        setSearchResults([]);
+        setApplyReason('我想添加你为好友');
+      } else {
+        alert(res.msg || '发送失败');
+      }
+    } catch (err) {
+      console.error('发送好友申请失败', err);
+    }
+  };
+
+  // 处理好友申请
+  const handleApply = async (apply, status) => {
+    try {
+      const res = await request.put('/api/friend/apply/handle', {
+        apply_id: apply.id,
+        user_id: userInfo.id,
+        status: status
+      });
+      
+      if (res.code === 200) {
+        alert(res.msg);
+        getFriendApplies();
+        getFriends();
+      } else {
+        alert(res.msg || '处理失败');
+      }
+    } catch (err) {
+      console.error('处理好友申请失败', err);
+    }
+  };
+
+  // 获取聊天记录
+  const getMessages = async (targetUserId, isLoadMore = false) => {
+    if (!targetUserId) return;
+    
+    try {
+      if (isLoadMore) {
+        setLoadingMore(true);
+      }
+      
+      const res = await request.get('/api/chat/messages', {
+        params: {
+          from_user_id: userInfo.id,
+          to_user_id: targetUserId,
+          offset: isLoadMore ? messageOffset + PAGE_SIZE : 0,
+          limit: PAGE_SIZE
+        }
+      });
+
+      if (res.code === 200) {
+        if (isLoadMore) {
+          setMessages(prev => [...res.data, ...prev]);
+          setHasMore(res.data.length === PAGE_SIZE);
+          scrollToTop();
+        } else {
+          setMessages(res.data);
+          setHasMore(res.data.length === PAGE_SIZE);
+          setMessageOffset(0);
+          scrollToBottom();
+        }
+      }
+    } catch (err) {
+      console.error('获取聊天记录失败', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // 发送消息
+  const handleSend = async () => {
+    if (!inputValue.trim() || !selectedUser || sending) return;
+
+    try {
+      setSending(true);
+      const res = await request.post('/api/chat/send', {
+        from_user_id: userInfo.id,
+        to_user_id: selectedUser.id,
+        content: inputValue.trim(),
+        type: 'text'
+      });
+
+      if (res.code === 200) {
+        setInputValue('');
+        setShowExtensionMenu(false);
+        getMessages(selectedUser.id);
+        getConversations();
+      } else {
+        alert(res.msg || '发送失败');
+      }
+    } catch (err) {
+      console.error('发送失败', err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // 处理键盘事件
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  // 处理图片选择
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        setSending(true);
+        const res = await request.post('/api/chat/send', {
+          from_user_id: userInfo.id,
+          to_user_id: selectedUser.id,
+          content: event.target.result,
+          type: 'image'
+        });
+
+        if (res.code === 200) {
+          getMessages(selectedUser.id);
+          getConversations();
+        }
+      } catch (err) {
+        console.error('发送图片失败', err);
+      } finally {
+        setSending(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 切换聊天对象
+  const handleSelectUser = async (user) => {
+    setSelectedUser(user);
+    setMessages([]);
+    setMessageOffset(0);
+    setHasMore(true);
+    setMessageContextMenu(null);
+    setConvContextMenu(null);
+    
+    await request.put('/api/chat/mark-read', {
+      from_user_id: user.id,
+      to_user_id: userInfo.id
+    });
+    
+    getMessages(user.id);
+    getConversations();
+  };
+
+  // ===================== 消息右键菜单相关 =====================
+  const handleMessageContextMenu = (e, message) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setConvContextMenu(null);
+    setMessageContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      message
+    });
+  };
+
+  const handleCopyText = () => {
+    if (messageContextMenu?.message) {
+      navigator.clipboard.writeText(messageContextMenu.message.content);
+      setMessageContextMenu(null);
+    }
+  };
+
+  const handleRecallMessage = async () => {
+    if (!messageContextMenu?.message) return;
+    
+    try {
+      const res = await request.put('/api/chat/recall', {
+        message_id: messageContextMenu.message.id,
+        user_id: userInfo.id
+      });
+      
+      if (res.code === 200) {
+        alert('撤回成功');
+        getMessages(selectedUser.id);
+      } else {
+        alert(res.msg || '撤回失败');
+      }
+    } catch (err) {
+      console.error('撤回失败', err);
+    } finally {
+      setMessageContextMenu(null);
+    }
+  };
+
+  const handleDeleteMessage = async () => {
+    if (!messageContextMenu?.message) return;
+    
+    if (!window.confirm('确定要删除这条消息吗？')) return;
+    
+    try {
+      const res = await request.put('/api/chat/delete', {
+        message_id: messageContextMenu.message.id,
+        user_id: userInfo.id
+      });
+      
+      if (res.code === 200) {
+        getMessages(selectedUser.id);
+      }
+    } catch (err) {
+      console.error('删除失败', err);
+    } finally {
+      setMessageContextMenu(null);
+    }
+  };
+
+  // ===================== 会话右键菜单相关 =====================
+  const handleConvContextMenu = (e, conv) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMessageContextMenu(null);
+    setConvContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      conv
+    });
+  };
+
+  // 1. 置顶/取消置顶
+  const handleTogglePin = async () => {
+    if (!convContextMenu?.conv) return;
+    const conv = convContextMenu.conv;
+    const newPinStatus = conv.is_pinned ? 0 : 1;
+    
+    try {
+      const res = await request.put('/api/conversations/top', {
+        user_id: userInfo.id,
+        target_user_id: conv.target_user_id,
+        is_pinned: newPinStatus
+      });
+      
+      if (res.code === 200) {
+        getConversations();
+      }
+    } catch (err) {
+      console.error('置顶操作失败', err);
+    } finally {
+      setConvContextMenu(null);
+    }
+  };
+
+  // 2. 隐藏对话
+  const handleHideConv = async () => {
+    if (!convContextMenu?.conv) return;
+    const conv = convContextMenu.conv;
+    
+    if (!window.confirm('确定要隐藏这个对话吗？')) return;
+
+    try {
+      const res = await request.put('/api/conversations/hide', {
+        user_id: userInfo.id,
+        target_user_id: conv.target_user_id,
+        is_hidden: 1
+      });
+      
+      if (res.code === 200) {
+        // 如果当前正在和这个人聊天，取消选中
+        if (selectedUser?.id === conv.target_user_id) {
+          setSelectedUser(null);
+        }
+        getConversations();
+      }
+    } catch (err) {
+      console.error('隐藏失败', err);
+    } finally {
+      setConvContextMenu(null);
+    }
+  };
+
+  // 3. 删除对话
+  const handleDeleteConv = async () => {
+    if (!convContextMenu?.conv) return;
+    const conv = convContextMenu.conv;
+    
+    if (!window.confirm('确定要删除这个对话吗？（仅删除会话记录，不删除聊天消息）')) return;
+
+    try {
+      const res = await request.delete(`/api/conversations/${conv.id}`, {
+        data: { user_id: userInfo.id }
+      });
+      
+      if (res.code === 200) {
+        if (selectedUser?.id === conv.target_user_id) {
+          setSelectedUser(null);
+        }
+        getConversations();
+      }
+    } catch (err) {
+      console.error('删除失败', err);
+    } finally {
+      setConvContextMenu(null);
+    }
+  };
+
+  // 滚动加载更多
+  const handleScroll = (e) => {
+    const { scrollTop } = e.target;
+    if (scrollTop <= 50 && hasMore && !loadingMore && selectedUser) {
+      setMessageOffset(prev => prev + PAGE_SIZE);
+      getMessages(selectedUser.id, true);
+    }
+  };
+
+  // 点击页面其他地方关闭右键菜单
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setMessageContextMenu(null);
+      setConvContextMenu(null);
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // 页面加载时获取数据
+  useEffect(() => {
+    getConversations();
+    getFriends();
+    getFriendApplies();
+  }, []);
+
+  // 消息变化时滚动到底部
+  useEffect(() => {
+    if (!loadingMore) {
+      scrollToBottom();
+    }
+  }, [messages, loadingMore, scrollToBottom]);
+
+  // 输入时模拟"正在输入"
+  useEffect(() => {
+    if (inputValue.trim()) {
+      setIsTyping(true);
+      const timer = setTimeout(() => setIsTyping(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [inputValue]);
+
+  // 格式化时间
+  const formatMessageTime = (dateStr) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = now - date;
+    const minutes = Math.floor(diff / 60000);
+    
+    if (minutes < 5) return '';
+    
+    return date.toLocaleTimeString('zh-CN', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
+  const shouldShowTimeDivider = (index, messages) => {
+    if (index === 0) return true;
+    const prevTime = new Date(messages[index - 1].create_time);
+    const currTime = new Date(messages[index].create_time);
+    return (currTime - prevTime) > 5 * 60 * 1000;
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       {/* 页面标题 */}
-      <div className="mb-6">
-        <h2 className="text-3xl font-bold text-gray-800 mb-2">实时聊天</h2>
-        <p className="text-gray-600">和好友实时沟通</p>
+      <div className="mb-6 flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-800 mb-2">实时聊天</h2>
+          <p className="text-gray-600">和好友实时沟通</p>
+        </div>
+        <button
+          onClick={() => setShowAddFriendModal(true)}
+          className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+        >
+          + 添加好友
+        </button>
       </div>
 
       {/* 聊天容器 */}
-      <div className="bg-white rounded-lg shadow-md h-[65vh] flex flex-col">
-        {/* 消息列表 */}
-        <div className="flex-grow overflow-y-auto p-6 space-y-4">
-          {messages.length > 0 ? (
-            messages.map((msg, index) => (
-              <div key={index} className={`flex ${msg.userId === '我' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-md ${msg.userId === '我' ? 'items-end' : 'items-start'} flex flex-col`}>
-                  <div className="flex items-center mb-1 gap-2">
-                    <span className="text-sm text-gray-500">{msg.userId}</span>
-                    <span className="text-xs text-gray-400">{msg.time}</span>
+      <div className="bg-white rounded-lg shadow-md h-[70vh] flex">
+        {/* 左侧：会话/通讯录tab切换 */}
+        <div className="w-72 border-r bg-gray-50 flex flex-col">
+          {/* Tab切换栏 */}
+          <div className="flex border-b bg-white">
+            <button
+              onClick={() => setActiveTab('conversation')}
+              className={`flex-1 py-4 text-center font-medium transition-colors ${
+                activeTab === 'conversation' 
+                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' 
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              会话
+            </button>
+            <button
+              onClick={() => setActiveTab('contact')}
+              className={`flex-1 py-4 text-center font-medium transition-colors ${
+                activeTab === 'contact' 
+                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' 
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              通讯录
+              {friendApplies.filter(a => a.status === 0).length > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center w-5 h-5 text-xs font-medium text-white bg-red-500 rounded-full">
+                  {friendApplies.filter(a => a.status === 0).length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {/* 会话列表 */}
+            {activeTab === 'conversation' && (
+              <>
+                {conversations.length > 0 ? (
+                  conversations.map((conv) => (
+                    <div
+                      key={`conv-${conv.id}`}
+                      onClick={() => handleSelectUser({
+                        id: conv.target_user_id,
+                        username: conv.username,
+                        avatar: conv.avatar,
+                        nickname: conv.nickname
+                      })}
+                      onContextMenu={(e) => handleConvContextMenu(e, conv)}
+                      className={`p-4 cursor-pointer hover:bg-gray-100 transition-colors border-b relative ${
+                        selectedUser?.id === conv.target_user_id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold overflow-hidden relative">
+                          {conv.avatar ? (
+                            <img src={conv.avatar} alt={conv.username} className="w-full h-full object-cover" />
+                          ) : (
+                            (conv.nickname || conv.username || 'U').charAt(0).toUpperCase()
+                          )}
+                          {conv.unread_count > 0 && (
+                            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                              {conv.unread_count}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-center">
+                            <p className="font-medium text-gray-800 truncate flex items-center gap-1">
+                              {conv.is_pinned && <span className="text-xs text-blue-500">[置顶]</span>}
+                              {conv.nickname || conv.username}
+                            </p>
+                            {conv.last_message_time && (
+                              <span className="text-xs text-gray-400">
+                                {new Date(conv.last_message_time).toLocaleTimeString('zh-CN', { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500 truncate">
+                            {conv.last_message || '暂无消息'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4 text-center text-gray-500">
+                    暂无会话，去通讯录添加好友吧～
                   </div>
-                  <div className={`px-4 py-2 rounded-lg ${
-                    msg.userId === '我' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {msg.content}
+                )}
+              </>
+            )}
+
+            {/* 通讯录列表 */}
+            {activeTab === 'contact' && (
+              <>
+                {/* 好友申请入口 */}
+                {friendApplies.filter(a => a.status === 0).length > 0 && (
+                  <div className="border-b border-gray-200">
+                    <div className="px-4 py-2 text-xs text-gray-400 bg-gray-100">新的好友申请</div>
+                    {friendApplies.filter(a => a.status === 0).map((apply) => (
+                      <div key={`apply-${apply.id}`} className="p-4 border-b bg-yellow-50">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold overflow-hidden">
+                            {apply.from_avatar ? (
+                              <img src={apply.from_avatar} alt={apply.from_username} className="w-full h-full object-cover" />
+                            ) : (
+                              (apply.from_nickname || apply.from_username || 'U').charAt(0).toUpperCase()
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-800">
+                              {apply.from_nickname || apply.from_username}
+                            </p>
+                            <p className="text-sm text-gray-500">
+                              {apply.apply_reason}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleApply(apply, 2)}
+                            className="flex-1 px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100"
+                          >
+                            拒绝
+                          </button>
+                          <button
+                            onClick={() => handleApply(apply, 1)}
+                            className="flex-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                          >
+                            同意
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                )}
+
+                {/* 我的好友 */}
+                <div className="px-4 py-2 text-xs text-gray-400 bg-gray-100">我的好友 ({friends.length})</div>
+                {friends.length > 0 ? (
+                  friends.map((friend) => (
+                    <div
+                      key={`friend-${friend.id}`}
+                      onClick={() => handleSelectUser({
+                        id: friend.friend_user_id,
+                        username: friend.username,
+                        avatar: friend.avatar,
+                        nickname: friend.nickname
+                      })}
+                      className={`p-4 cursor-pointer hover:bg-gray-100 transition-colors border-b ${
+                        selectedUser?.id === friend.friend_user_id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold overflow-hidden relative">
+                          {friend.avatar ? (
+                            <img src={friend.avatar} alt={friend.username} className="w-full h-full object-cover" />
+                          ) : (
+                            (friend.nickname || friend.username || 'U').charAt(0).toUpperCase()
+                          )}
+                          {friend.online_status === 'online' && (
+                            <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-800 truncate">
+                            {friend.nickname || friend.username}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {friend.online_status === 'online' ? '在线' : '离线'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4 text-center text-gray-500">
+                    暂无好友，点击右上角添加好友吧～
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* 右侧：聊天区域 */}
+        <div className="flex-1 flex flex-col">
+          {/* 顶部信息栏 */}
+          {selectedUser && (
+            <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold overflow-hidden">
+                  {selectedUser.avatar ? (
+                    <img src={selectedUser.avatar} alt={selectedUser.username} className="w-full h-full object-cover" />
+                  ) : (
+                    (selectedUser.nickname || selectedUser.username || 'U').charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div>
+                  <p className="font-medium text-gray-800">
+                    {selectedUser.nickname || selectedUser.username}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {isTyping ? '对方正在输入...' : '在线'}
+                  </p>
                 </div>
               </div>
-            ))
-          ) : (
-            <div className="h-full flex items-center justify-center text-gray-400">
-              暂无消息，开始聊天吧～
+              <button 
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                onClick={() => alert('查看对方资料页（预留入口）')}
+              >
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* 消息列表 */}
+          <div 
+            ref={messageContainerRef}
+            className="flex-grow overflow-y-auto p-6 space-y-4 bg-gray-50"
+            onScroll={handleScroll}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            {!selectedUser ? (
+              <div className="h-full flex items-center justify-center text-gray-400">
+                请选择一个联系人开始聊天
+              </div>
+            ) : messages.length > 0 ? (
+              <>
+                {loadingMore && (
+                  <div className="text-center text-gray-400 text-sm py-2">
+                    加载中...
+                  </div>
+                )}
+                
+                {messages.map((msg, index) => {
+                  const isSenderMe = msg.from_user_id === userInfo.id;
+                  const isMe = isSenderMe; 
+                  const showTime = shouldShowTimeDivider(index, messages);
+                  
+                  return (
+                    <div key={msg.id}>
+                      {showTime && (
+                        <div className="text-center my-4">
+                          <span className="px-3 py-1 bg-gray-200 text-gray-500 text-xs rounded-full">
+                            {new Date(msg.create_time).toLocaleString('zh-CN', {
+                              month: 'numeric',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+                      )}
+
+                      <div 
+                        className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                        onContextMenu={(e) => !msg.is_recalled && handleMessageContextMenu(e, msg)}
+                      >
+                        <div className={`max-w-md ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
+                          <div className="flex items-center mb-1 gap-2">
+                            <span className="text-sm text-gray-500">
+                              {isMe ? '我' : (selectedUser?.nickname || selectedUser?.username || '对方')}
+                            </span>
+                            {formatMessageTime(msg.create_time) && (
+                              <span className="text-xs text-gray-400">
+                                {formatMessageTime(msg.create_time)}
+                              </span>
+                            )}
+                          </div>
+                          
+                          {msg.is_recalled ? (
+                            <div className="px-4 py-2 rounded-lg bg-gray-100 text-gray-400 text-sm italic">
+                              {msg.content}
+                            </div>
+                          ) : msg.type === 'image' ? (
+                            <div 
+                              className="rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity max-w-xs"
+                              onClick={() => setPreviewImage(msg.content)}
+                            >
+                              <img 
+                                src={msg.content} 
+                                alt="消息图片" 
+                                className="w-full h-auto"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.nextSibling.style.display = 'block';
+                                }}
+                              />
+                              <div className="hidden px-4 py-8 bg-gray-200 text-gray-500 text-center">
+                                图片加载失败
+                              </div>
+                            </div>
+                          ) : (
+                            <div className={`px-4 py-2 rounded-lg whitespace-pre-wrap break-words ${
+                              isMe 
+                                ? 'bg-blue-600 text-white rounded-tr-none' 
+                                : 'bg-white text-gray-800 rounded-tl-none shadow-sm'
+                            }`}>
+                              {msg.content}
+                            </div>
+                          )}
+                          
+                          {isMe && !msg.is_recalled && (
+                            <div className="flex items-center mt-1 gap-1">
+                              {msg.status === 'sending' && (
+                                <span className="text-xs text-gray-400">发送中...</span>
+                              )}
+                              {msg.status === 'failed' && (
+                                <span className="text-xs text-red-500">发送失败</span>
+                              )}
+                              {msg.status === 'sent' && (
+                                <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                                </svg>
+                              )}
+                              {msg.status === 'delivered' && (
+                                <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                                </svg>
+                              )}
+                              {msg.status === 'read' && (
+                                <svg className="w-3 h-3 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
+                                </svg>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </>
+            ) : (
+              <div className="h-full flex items-center justify-center text-gray-400">
+                暂无消息，开始聊天吧～
+              </div>
+            )}
+          </div>
+
+          {/* 底部输入控制区 */}
+          {selectedUser && (
+            <div className="border-t bg-white">
+              {showExtensionMenu && (
+                <div className="p-4 border-b bg-gray-50 flex gap-4">
+                  <label className="flex flex-col items-center gap-2 cursor-pointer hover:bg-gray-100 p-3 rounded-lg transition-colors">
+                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2h-5.586a1 1 0 01-.707.293l-5.414 5.414a1 1 0 01-.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <span className="text-sm text-gray-600">相册</span>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={handleImageSelect}
+                    />
+                  </label>
+                  <button 
+                    className="flex flex-col items-center gap-2 hover:bg-gray-100 p-3 rounded-lg transition-colors"
+                    onClick={() => alert('文件发送（预留入口）')}
+                  >
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                      <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <span className="text-sm text-gray-600">文件</span>
+                  </button>
+                </div>
+              )}
+
+              <div className="p-4">
+                <div className="flex items-end gap-3">
+                  <button
+                    className={`p-2 rounded-full transition-colors ${
+                      showExtensionMenu ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-600'
+                    }`}
+                    onClick={() => setShowExtensionMenu(!showExtensionMenu)}
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                  </button>
+
+                  <button
+                    className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600"
+                    onClick={() => alert('表情功能（预留入口）')}
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+
+                  <div className="flex-1 relative">
+                    <textarea
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="输入消息..."
+                      disabled={sending}
+                      rows={1}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:border-blue-500 resize-none disabled:bg-gray-100"
+                      style={{
+                        maxHeight: '120px',
+                        minHeight: '48px',
+                        height: 'auto'
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleSend}
+                    disabled={!selectedUser || sending || !inputValue.trim()}
+                    className={`px-6 py-3 rounded-2xl font-medium transition-colors whitespace-nowrap ${
+                      inputValue.trim() && !sending
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {sending ? '发送中...' : '发送'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
-        {/* 发送消息表单 */}
-        <form onSubmit={handleSend} className="p-4 border-t bg-gray-50">
-          <div className="flex gap-3">
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="输入消息..."
-              className="flex-grow px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
-            />
-            <button 
-              type="submit" 
-              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap"
-            >
-              发送
-            </button>
-          </div>
-        </form>
       </div>
+
+      {/* 添加好友弹窗 */}
+      {showAddFriendModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-800">添加好友</h3>
+              <button 
+                onClick={() => {
+                  setShowAddFriendModal(false);
+                  setSearchKeyword('');
+                  setSearchResults([]);
+                  setApplyReason('我想添加你为好友');
+                }}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="p-4">
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="text"
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearchUser()}
+                  placeholder="输入用户名、邮箱或手机号搜索"
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  onClick={handleSearchUser}
+                  disabled={searching || !searchKeyword.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
+                >
+                  {searching ? '搜索中...' : '搜索'}
+                </button>
+              </div>
+
+              {searchResults.length > 0 && (
+                <div className="space-y-3 max-h-60 overflow-y-auto">
+                  {searchResults.map((user) => (
+                    <div key={user.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold overflow-hidden">
+                          {user.avatar ? (
+                            <img src={user.avatar} alt={user.username} className="w-full h-full object-cover" />
+                          ) : (
+                            (user.nickname || user.username || 'U').charAt(0).toUpperCase()
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-800">
+                            {user.nickname || user.username}
+                          </p>
+                          {user.email && (
+                            <p className="text-xs text-gray-400">{user.email}</p>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleSendApply(user)}
+                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        添加好友
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {searchResults.length > 0 && (
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    申请理由
+                  </label>
+                  <input
+                    type="text"
+                    value={applyReason}
+                    onChange={(e) => setApplyReason(e.target.value)}
+                    placeholder="请输入申请理由"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              )}
+
+              {!searching && searchKeyword && searchResults.length === 0 && (
+                <div className="text-center py-8 text-gray-400">
+                  未找到相关用户
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 消息右键菜单 */}
+      {messageContextMenu && (
+        <div
+          className="fixed bg-white rounded-lg shadow-xl border py-2 z-50 min-w-[160px]"
+          style={{
+            left: messageContextMenu.x,
+            top: messageContextMenu.y,
+            transform: messageContextMenu.x > window.innerWidth / 2 ? 'translateX(-100%)' : 'none'
+          }}
+        >
+          {messageContextMenu.message.type === 'text' && !messageContextMenu.message.is_recalled && (
+            <button
+              className="w-full px-4 py-2 text-left hover:bg-gray-100 text-gray-700 flex items-center gap-2"
+              onClick={handleCopyText}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              复制文本
+            </button>
+          )}
+          {messageContextMenu.message.from_user_id === userInfo.id && !messageContextMenu.message.is_recalled && (
+            <button
+              className="w-full px-4 py-2 text-left hover:bg-gray-100 text-gray-700 flex items-center gap-2"
+              onClick={handleRecallMessage}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+              撤回消息
+            </button>
+          )}
+          <button
+            className="w-full px-4 py-2 text-left hover:bg-gray-100 text-red-600 flex items-center gap-2"
+            onClick={handleDeleteMessage}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            删除消息
+          </button>
+        </div>
+      )}
+
+      {/* 会话右键菜单 */}
+      {convContextMenu && (
+        <div
+          className="fixed bg-white rounded-lg shadow-xl border py-2 z-50 min-w-[160px]"
+          style={{
+            left: convContextMenu.x,
+            top: convContextMenu.y,
+            transform: convContextMenu.x > window.innerWidth / 2 ? 'translateX(-100%)' : 'none'
+          }}
+        >
+          <button
+            className="w-full px-4 py-2 text-left hover:bg-gray-100 text-gray-700 flex items-center gap-2"
+            onClick={handleTogglePin}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H7a2 2 0 01-2-2V5z" />
+            </svg>
+            {convContextMenu.conv.is_pinned ? '取消置顶' : '置顶对话'}
+          </button>
+          
+          <button
+            className="w-full px-4 py-2 text-left hover:bg-gray-100 text-gray-700 flex items-center gap-2"
+            onClick={handleHideConv}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+            </svg>
+            隐藏对话
+          </button>
+          
+          <button
+            className="w-full px-4 py-2 text-left hover:bg-gray-100 text-red-600 flex items-center gap-2"
+            onClick={handleDeleteConv}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            删除对话
+          </button>
+        </div>
+      )}
+
+      {/* 图片预览弹窗 */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center"
+          onClick={() => setPreviewImage(null)}
+        >
+          <button 
+            className="absolute top-4 right-4 text-white text-4xl hover:text-gray-300"
+            onClick={() => setPreviewImage(null)}
+          >
+            ×
+          </button>
+          <img 
+            src={previewImage} 
+            alt="预览" 
+            className="max-w-[90vw] max-h-[90vh] object-contain"
+            ref={imagePreviewRef}
+          />
+        </div>
+      )}
     </div>
   );
 };

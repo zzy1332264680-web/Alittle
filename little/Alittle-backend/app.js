@@ -1,4 +1,4 @@
-// Alittle-backend/app.js 完整代码（新增用户信息高级修改功能）
+// Alittle-backend/app.js 完整代码（最终版，包含所有接口+会话右键菜单支持）
 const express = require('express');
 const cors = require('cors');
 const pool = require('./db.js'); // 引入数据库连接
@@ -10,7 +10,7 @@ const PORT = 3001; // 后端端口，和前端request.js一致
 
 // 2. 核心中间件（必须配置）
 app.use(cors()); // 解决跨域
-app.use(express.json({ limit: '10mb' })); // 解析JSON请求体，支持大图片
+app.use(express.json({ limit: '20mb' })); // 解析JSON请求体，支持大图片
 
 // ===================== 原有接口1：用户名查重 =====================
 app.post('/api/auth/check-nickname', async (req, res) => {
@@ -546,24 +546,689 @@ app.put('/api/goods/status', async (req, res) => {
   }
 });
 
+// ===================== 标准接口1：GET /api/contacts 获取好友列表 =====================
+app.get('/api/contacts', async (req, res) => {
+  try {
+    const { exclude_user_id } = req.query;
+    let sql = 'SELECT id, username, avatar, nickname, online_status, last_online_time FROM `user`';
+    let params = [];
+    
+    if (exclude_user_id) {
+      sql += ' WHERE id != ?';
+      params.push(exclude_user_id);
+    }
+    
+    sql += ' ORDER BY id ASC';
+    
+    const [rows] = await pool.query(sql, params);
+    res.json({ code: 200, msg: '获取成功', data: rows });
+  } catch (error) {
+    console.error('【获取好友列表失败】：', error);
+    res.status(500).json({ code: 500, msg: '获取好友列表失败' });
+  }
+});
+
+// ===================== 标准接口2：GET /api/conversations 获取会话列表（支持is_hidden） =====================
+app.get('/api/conversations', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    if (!user_id) {
+      return res.json({ code: 400, msg: '参数不完整：user_id不能为空' });
+    }
+
+    const [rows] = await pool.query(`
+      SELECT 
+        cc.*,
+        u.username,
+        u.avatar,
+        u.nickname,
+        u.online_status
+      FROM chat_conversations cc
+      LEFT JOIN user u ON cc.target_user_id = u.id
+      WHERE cc.user_id = ?
+      ORDER BY cc.is_pinned DESC, cc.updated_at DESC
+    `, [user_id]);
+
+    res.json({ code: 200, msg: '获取成功', data: rows });
+  } catch (error) {
+    console.error('【获取会话列表失败】：', error);
+    res.status(500).json({ code: 500, msg: '获取会话列表失败' });
+  }
+});
+
+// ===================== 标准接口3：GET /api/messages 分页获取聊天记录 =====================
+app.get('/api/messages', async (req, res) => {
+  try {
+    const { from_user_id, to_user_id, page = 1, page_size = 20 } = req.query;
+    if (!from_user_id || !to_user_id) {
+      return res.json({ code: 400, msg: '参数不完整：from_user_id和to_user_id不能为空' });
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(page_size);
+    
+    const [rows] = await pool.query(`
+      SELECT 
+        cm.*,
+        u_from.username as from_username,
+        u_from.avatar as from_avatar,
+        u_to.username as to_username,
+        u_to.avatar as to_avatar
+      FROM chat_messages cm
+      LEFT JOIN user u_from ON cm.from_user_id = u_from.id
+      LEFT JOIN user u_to ON cm.to_user_id = u_to.id
+      WHERE ((cm.from_user_id = ? AND cm.to_user_id = ?) OR (cm.from_user_id = ? AND cm.to_user_id = ?))
+        AND cm.is_deleted = 0
+      ORDER BY cm.create_time DESC
+      LIMIT ? OFFSET ?
+    `, [from_user_id, to_user_id, to_user_id, from_user_id, parseInt(page_size), offset]);
+
+    res.json({ code: 200, msg: '获取成功', data: rows.reverse() });
+  } catch (error) {
+    console.error('【获取聊天记录失败】：', error);
+    res.status(500).json({ code: 500, msg: '获取聊天记录失败' });
+  }
+});
+
+// ===================== 标准接口4：POST /api/messages/send 发送消息 =====================
+app.post('/api/messages/send', async (req, res) => {
+  try {
+    const { from_user_id, to_user_id, content, type = 'text' } = req.body;
+    if (!from_user_id || !to_user_id || !content || !content.trim()) {
+      return res.json({ code: 400, msg: '参数不完整：from_user_id, to_user_id, content不能为空' });
+    }
+
+    const [result] = await pool.query(
+      'INSERT INTO chat_messages (from_user_id, to_user_id, content, type, status) VALUES (?, ?, ?, ?, ?)',
+      [from_user_id, to_user_id, content.trim(), type, 'sent']
+    );
+
+    // 更新会话表
+    await pool.query(`
+      INSERT INTO chat_conversations (user_id, target_user_id, last_message, last_message_time, unread_count)
+      VALUES (?, ?, ?, NOW(), 0)
+      ON DUPLICATE KEY UPDATE 
+        last_message = ?, 
+        last_message_time = NOW()
+    `, [from_user_id, to_user_id, content.trim(), content.trim()]);
+
+    await pool.query(`
+      INSERT INTO chat_conversations (user_id, target_user_id, last_message, last_message_time, unread_count)
+      VALUES (?, ?, ?, NOW(), 1)
+      ON DUPLICATE KEY UPDATE 
+        last_message = ?, 
+        last_message_time = NOW(),
+        unread_count = unread_count + 1
+    `, [to_user_id, from_user_id, content.trim(), content.trim()]);
+
+    res.json({ code: 200, msg: '发送成功', data: { id: result.insertId } });
+  } catch (error) {
+    console.error('【发送消息失败】：', error);
+    res.status(500).json({ code: 500, msg: '发送消息失败' });
+  }
+});
+
+// ===================== 标准接口5：PUT /api/conversations/top 会话置顶/取消置顶 =====================
+app.put('/api/conversations/top', async (req, res) => {
+  try {
+    const { user_id, target_user_id, is_pinned } = req.body;
+    if (!user_id || !target_user_id || is_pinned === undefined) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    await pool.query(`
+      UPDATE chat_conversations 
+      SET is_pinned = ?
+      WHERE user_id = ? AND target_user_id = ?
+    `, [is_pinned, user_id, target_user_id]);
+
+    res.json({ code: 200, msg: is_pinned ? '置顶成功' : '取消置顶成功' });
+  } catch (error) {
+    console.error('【会话置顶失败】：', error);
+    res.status(500).json({ code: 500, msg: '操作失败' });
+  }
+});
+
+// ===================== 标准接口6：PUT /api/conversations/mute 会话免打扰设置 =====================
+app.put('/api/conversations/mute', async (req, res) => {
+  try {
+    const { user_id, target_user_id, is_muted } = req.body;
+    if (!user_id || !target_user_id || is_muted === undefined) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    await pool.query(`
+      UPDATE chat_conversations 
+      SET is_muted = ?
+      WHERE user_id = ? AND target_user_id = ?
+    `, [is_muted, user_id, target_user_id]);
+
+    res.json({ code: 200, msg: is_muted ? '免打扰设置成功' : '取消免打扰成功' });
+  } catch (error) {
+    console.error('【免打扰设置失败】：', error);
+    res.status(500).json({ code: 500, msg: '操作失败' });
+  }
+});
+
+// ===================== 标准接口7：DELETE /api/conversations/:id 删除会话 =====================
+app.delete('/api/conversations/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id } = req.body;
+    
+    if (!id || !user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    await pool.query(`
+      DELETE FROM chat_conversations 
+      WHERE id = ? AND user_id = ?
+    `, [id, user_id]);
+
+    res.json({ code: 200, msg: '删除会话成功' });
+  } catch (error) {
+    console.error('【删除会话失败】：', error);
+    res.status(500).json({ code: 500, msg: '删除会话失败' });
+  }
+});
+
+// ===================== 标准接口8：POST /api/messages/recall 消息撤回 =====================
+app.post('/api/messages/recall', async (req, res) => {
+  try {
+    const { message_id, user_id } = req.body;
+    if (!message_id || !user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    // 检查是否是自己的消息，且在2分钟内
+    const [rows] = await pool.query(`
+      SELECT * FROM chat_messages 
+      WHERE id = ? AND from_user_id = ? AND is_deleted = 0
+    `, [message_id, user_id]);
+
+    if (rows.length === 0) {
+      return res.json({ code: 403, msg: '无权撤回此消息' });
+    }
+
+    const messageTime = new Date(rows[0].create_time);
+    const now = new Date();
+    const diffMinutes = (now - messageTime) / (1000 * 60);
+
+    if (diffMinutes > 2) {
+      return res.json({ code: 400, msg: '消息超过2分钟，无法撤回' });
+    }
+
+    await pool.query(`
+      UPDATE chat_messages 
+      SET is_recalled = 1, content = '消息已撤回'
+      WHERE id = ?
+    `, [message_id]);
+
+    res.json({ code: 200, msg: '撤回成功' });
+  } catch (error) {
+    console.error('【撤回消息失败】：', error);
+    res.status(500).json({ code: 500, msg: '撤回消息失败' });
+  }
+});
+
+// ===================== 标准接口9：POST /api/upload/image 图片/文件上传 =====================
+app.post('/api/upload/image', async (req, res) => {
+  try {
+    const { image, user_id } = req.body;
+    if (!image || !user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    // 当前版本：直接返回base64作为URL（后续可扩展为上传到服务器或云存储）
+    res.json({ 
+      code: 200, 
+      msg: '上传成功', 
+      data: { url: image } 
+    });
+  } catch (error) {
+    console.error('【图片上传失败】：', error);
+    res.status(500).json({ code: 500, msg: '图片上传失败' });
+  }
+});
+
+// ===================== 标准接口10：GET /api/user/online-status 获取用户在线状态 =====================
+app.get('/api/user/online-status', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    if (!user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    const [rows] = await pool.query(`
+      SELECT id, online_status, last_online_time 
+      FROM user 
+      WHERE id = ?
+    `, [user_id]);
+
+    if (rows.length === 0) {
+      return res.json({ code: 404, msg: '用户不存在' });
+    }
+
+    res.json({ code: 200, msg: '获取成功', data: rows[0] });
+  } catch (error) {
+    console.error('【获取在线状态失败】：', error);
+    res.status(500).json({ code: 500, msg: '获取在线状态失败' });
+  }
+});
+
+// ===================== 兼容原有接口（保留旧接口路径，避免前端报错） =====================
+app.get('/api/user/list', async (req, res) => {
+  try {
+    const { exclude_user_id } = req.query;
+    let sql = 'SELECT id, username, avatar, nickname FROM `user`';
+    let params = [];
+    
+    if (exclude_user_id) {
+      sql += ' WHERE id != ?';
+      params.push(exclude_user_id);
+    }
+    
+    sql += ' ORDER BY id ASC';
+    
+    const [rows] = await pool.query(sql, params);
+    res.json({ code: 200, msg: '获取成功', data: rows });
+  } catch (error) {
+    console.error('【获取用户列表失败】：', error);
+    res.status(500).json({ code: 500, msg: '获取用户列表失败' });
+  }
+});
+
+app.get('/api/chat/messages', async (req, res) => {
+  try {
+    const { from_user_id, to_user_id, offset = 0, limit = 20 } = req.query;
+    if (!from_user_id || !to_user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    const [rows] = await pool.query(`
+      SELECT 
+        cm.*,
+        u_from.username as from_username,
+        u_from.avatar as from_avatar,
+        u_to.username as to_username,
+        u_to.avatar as to_avatar
+      FROM chat_messages cm
+      LEFT JOIN user u_from ON cm.from_user_id = u_from.id
+      LEFT JOIN user u_to ON cm.to_user_id = u_to.id
+      WHERE ((cm.from_user_id = ? AND cm.to_user_id = ?) OR (cm.from_user_id = ? AND cm.to_user_id = ?))
+        AND cm.is_deleted = 0
+      ORDER BY cm.create_time DESC
+      LIMIT ? OFFSET ?
+    `, [from_user_id, to_user_id, to_user_id, from_user_id, parseInt(limit), parseInt(offset)]);
+
+    res.json({ code: 200, msg: '获取成功', data: rows.reverse() });
+  } catch (error) {
+    console.error('【获取聊天记录失败】：', error);
+    res.status(500).json({ code: 500, msg: '获取聊天记录失败' });
+  }
+});
+
+app.post('/api/chat/send', async (req, res) => {
+  try {
+    const { from_user_id, to_user_id, content, type = 'text' } = req.body;
+    if (!from_user_id || !to_user_id || !content || !content.trim()) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    const [result] = await pool.query(
+      'INSERT INTO chat_messages (from_user_id, to_user_id, content, type, status) VALUES (?, ?, ?, ?, ?)',
+      [from_user_id, to_user_id, content.trim(), type, 'sent']
+    );
+
+    await pool.query(`
+      INSERT INTO chat_conversations (user_id, target_user_id, last_message, last_message_time, unread_count)
+      VALUES (?, ?, ?, NOW(), 0)
+      ON DUPLICATE KEY UPDATE 
+        last_message = ?, 
+        last_message_time = NOW()
+    `, [from_user_id, to_user_id, content.trim(), content.trim()]);
+
+    await pool.query(`
+      INSERT INTO chat_conversations (user_id, target_user_id, last_message, last_message_time, unread_count)
+      VALUES (?, ?, ?, NOW(), 1)
+      ON DUPLICATE KEY UPDATE 
+        last_message = ?, 
+        last_message_time = NOW(),
+        unread_count = unread_count + 1
+    `, [to_user_id, from_user_id, content.trim(), content.trim()]);
+
+    res.json({ code: 200, msg: '发送成功', data: { id: result.insertId } });
+  } catch (error) {
+    console.error('【发送消息失败】：', error);
+    res.status(500).json({ code: 500, msg: '发送消息失败' });
+  }
+});
+
+// ===================== 替换：兼容旧接口 GET /api/chat/conversations（也支持is_hidden） =====================
+app.get('/api/chat/conversations', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    if (!user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    const [rows] = await pool.query(`
+      SELECT 
+        cc.*,
+        u.username,
+        u.avatar,
+        u.nickname
+      FROM chat_conversations cc
+      LEFT JOIN user u ON cc.target_user_id = u.id
+      WHERE cc.user_id = ?
+      ORDER BY cc.is_pinned DESC, cc.updated_at DESC
+    `, [user_id]);
+
+    res.json({ code: 200, msg: '获取成功', data: rows });
+  } catch (error) {
+    console.error('【获取会话列表失败】：', error);
+    res.status(500).json({ code: 500, msg: '获取会话列表失败' });
+  }
+});
+
+app.put('/api/chat/recall', async (req, res) => {
+  try {
+    const { message_id, user_id } = req.body;
+    if (!message_id || !user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    const [rows] = await pool.query(`
+      SELECT * FROM chat_messages 
+      WHERE id = ? AND from_user_id = ? AND is_deleted = 0
+    `, [message_id, user_id]);
+
+    if (rows.length === 0) {
+      return res.json({ code: 403, msg: '无权撤回此消息' });
+    }
+
+    const messageTime = new Date(rows[0].create_time);
+    const now = new Date();
+    const diffMinutes = (now - messageTime) / (1000 * 60);
+
+    if (diffMinutes > 2) {
+      return res.json({ code: 400, msg: '消息超过2分钟，无法撤回' });
+    }
+
+    await pool.query(`
+      UPDATE chat_messages 
+      SET is_recalled = 1, content = '消息已撤回'
+      WHERE id = ?
+    `, [message_id]);
+
+    res.json({ code: 200, msg: '撤回成功' });
+  } catch (error) {
+    console.error('【撤回消息失败】：', error);
+    res.status(500).json({ code: 500, msg: '撤回消息失败' });
+  }
+});
+
+// ===================== 补充：标记消息已读接口 =====================
+app.put('/api/chat/mark-read', async (req, res) => {
+  try {
+    const { from_user_id, to_user_id } = req.body;
+    if (!from_user_id || !to_user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    // 把对方发给我的消息标记为已读
+    await pool.query(`
+      UPDATE chat_messages 
+      SET status = 'read'
+      WHERE from_user_id = ? AND to_user_id = ? AND status != 'read'
+    `, [from_user_id, to_user_id]);
+
+    // 把会话的未读数清零
+    await pool.query(`
+      UPDATE chat_conversations 
+      SET unread_count = 0
+      WHERE user_id = ? AND target_user_id = ?
+    `, [to_user_id, from_user_id]);
+
+    res.json({ code: 200, msg: '标记成功' });
+  } catch (error) {
+    console.error('【标记已读失败】：', error);
+    res.status(500).json({ code: 500, msg: '标记已读失败' });
+  }
+});
+
+// ===================== 补充：删除消息接口（前端右键菜单用到） =====================
+app.put('/api/chat/delete', async (req, res) => {
+  try {
+    const { message_id, user_id } = req.body;
+    if (!message_id || !user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    await pool.query(`
+      UPDATE chat_messages 
+      SET is_deleted = 1
+      WHERE id = ? AND (from_user_id = ? OR to_user_id = ?)
+    `, [message_id, user_id, user_id]);
+
+    res.json({ code: 200, msg: '删除成功' });
+  } catch (error) {
+    console.error('【删除消息失败】：', error);
+    res.status(500).json({ code: 500, msg: '删除消息失败' });
+  }
+});
+
+// ===================== 新增：PUT /api/conversations/hide 隐藏/取消隐藏对话 =====================
+app.put('/api/conversations/hide', async (req, res) => {
+  try {
+    const { user_id, target_user_id, is_hidden } = req.body;
+    if (!user_id || !target_user_id || is_hidden === undefined) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    await pool.query(`
+      UPDATE chat_conversations 
+      SET is_hidden = ?
+      WHERE user_id = ? AND target_user_id = ?
+    `, [is_hidden, user_id, target_user_id]);
+
+    res.json({ code: 200, msg: is_hidden ? '隐藏成功' : '显示成功' });
+  } catch (error) {
+    console.error('【隐藏对话失败】：', error);
+    res.status(500).json({ code: 500, msg: '操作失败' });
+  }
+});
+
+// ===================== 新增：好友系统接口 =====================
+
+// 1. 搜索用户（支持用户名/邮箱/手机号）
+app.get('/api/user/search', async (req, res) => {
+  try {
+    const { keyword, exclude_user_id } = req.query;
+    if (!keyword || keyword.trim() === '') {
+      return res.json({ code: 400, msg: '搜索关键词不能为空' });
+    }
+
+    const searchKey = `%${keyword.trim()}%`;
+    let sql = `
+      SELECT id, username, email, phone, avatar, nickname 
+      FROM user 
+      WHERE (username LIKE ? OR email LIKE ? OR phone LIKE ?)
+    `;
+    let params = [searchKey, searchKey, searchKey];
+    
+    if (exclude_user_id) {
+      sql += ' AND id != ?';
+      params.push(exclude_user_id);
+    }
+    
+    const [rows] = await pool.query(sql, params);
+    res.json({ code: 200, msg: '搜索成功', data: rows });
+  } catch (error) {
+    console.error('【搜索用户失败】：', error);
+    res.status(500).json({ code: 500, msg: '搜索失败' });
+  }
+});
+
+// 2. 发送好友申请
+app.post('/api/friend/apply', async (req, res) => {
+  try {
+    const { from_user_id, to_user_id, apply_reason = '我想添加你为好友' } = req.body;
+    if (!from_user_id || !to_user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+    if (from_user_id === to_user_id) {
+      return res.json({ code: 400, msg: '不能添加自己为好友' });
+    }
+
+    // 检查是否已经是好友
+    const [checkFriend] = await pool.query(`
+      SELECT * FROM friend_relation 
+      WHERE user_id = ? AND friend_id = ? AND status = 1
+    `, [from_user_id, to_user_id]);
+    if (checkFriend.length > 0) {
+      return res.json({ code: 400, msg: '对方已经是你的好友了' });
+    }
+
+    // 检查是否已经发送过申请
+    const [checkApply] = await pool.query(`
+      SELECT * FROM friend_apply 
+      WHERE from_user_id = ? AND to_user_id = ? AND status = 0
+    `, [from_user_id, to_user_id]);
+    if (checkApply.length > 0) {
+      return res.json({ code: 400, msg: '已经发送过好友申请，请等待对方处理' });
+    }
+
+    // 插入申请
+    await pool.query(
+      'INSERT INTO friend_apply (from_user_id, to_user_id, apply_reason) VALUES (?, ?, ?)',
+      [from_user_id, to_user_id, apply_reason]
+    );
+
+    res.json({ code: 200, msg: '好友申请已发送' });
+  } catch (error) {
+    console.error('【发送好友申请失败】：', error);
+    res.status(500).json({ code: 500, msg: '发送失败' });
+  }
+});
+
+// 3. 获取好友申请列表（我收到的）
+app.get('/api/friend/apply/list', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    if (!user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    const [rows] = await pool.query(`
+      SELECT 
+        fa.*,
+        u_from.username as from_username,
+        u_from.avatar as from_avatar,
+        u_from.nickname as from_nickname
+      FROM friend_apply fa
+      LEFT JOIN user u_from ON fa.from_user_id = u_from.id
+      WHERE fa.to_user_id = ?
+      ORDER BY fa.created_at DESC
+    `, [user_id]);
+
+    res.json({ code: 200, msg: '获取成功', data: rows });
+  } catch (error) {
+    console.error('【获取好友申请失败】：', error);
+    res.status(500).json({ code: 500, msg: '获取失败' });
+  }
+});
+
+// 4. 处理好友申请（同意/拒绝）
+app.put('/api/friend/apply/handle', async (req, res) => {
+  try {
+    const { apply_id, user_id, status } = req.body;
+    if (!apply_id || !user_id || status === undefined) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    // 检查申请
+    const [applyRows] = await pool.query(`
+      SELECT * FROM friend_apply 
+      WHERE id = ? AND to_user_id = ? AND status = 0
+    `, [apply_id, user_id]);
+    if (applyRows.length === 0) {
+      return res.json({ code: 400, msg: '申请不存在或已处理' });
+    }
+
+    const apply = applyRows[0];
+
+    // 更新申请状态
+    await pool.query(
+      'UPDATE friend_apply SET status = ? WHERE id = ?',
+      [status, apply_id]
+    );
+
+    // 如果同意，添加好友关系
+    if (status === 1) {
+      // 双向添加好友关系
+      await pool.query(`
+        INSERT INTO friend_relation (user_id, friend_id, status)
+        VALUES (?, ?, 1)
+        ON DUPLICATE KEY UPDATE status = 1
+      `, [user_id, apply.from_user_id]);
+      
+      await pool.query(`
+        INSERT INTO friend_relation (user_id, friend_id, status)
+        VALUES (?, ?, 1)
+        ON DUPLICATE KEY UPDATE status = 1
+      `, [apply.from_user_id, user_id]);
+    }
+
+    res.json({ code: 200, msg: status === 1 ? '已同意好友申请' : '已拒绝好友申请' });
+  } catch (error) {
+    console.error('【处理好友申请失败】：', error);
+    res.status(500).json({ code: 500, msg: '处理失败' });
+  }
+});
+
+// 5. 获取我的好友列表
+app.get('/api/friend/list', async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    if (!user_id) {
+      return res.json({ code: 400, msg: '参数不完整' });
+    }
+
+    const [rows] = await pool.query(`
+      SELECT 
+        fr.*,
+        u.id as friend_user_id,
+        u.username,
+        u.avatar,
+        u.nickname,
+        u.online_status
+      FROM friend_relation fr
+      LEFT JOIN user u ON fr.friend_id = u.id
+      WHERE fr.user_id = ? AND fr.status = 1
+      ORDER BY u.username ASC
+    `, [user_id]);
+
+    res.json({ code: 200, msg: '获取成功', data: rows });
+  } catch (error) {
+    console.error('【获取好友列表失败】：', error);
+    res.status(500).json({ code: 500, msg: '获取失败' });
+  }
+});
+
 // ===================== 启动服务（必须在所有接口之后！） =====================
 app.listen(PORT, () => {
   console.log(`✅ 后端服务已启动：http://localhost:${PORT}`);
-  console.log(`✅ 接口列表：`);
-  console.log(`  - 查重：POST /api/auth/check-nickname`);
-  console.log(`  - 注册：POST /api/auth/register`);
-  console.log(`  - 登录：POST /api/auth/login`);
-  console.log(`  - 发布商品：POST /api/goods/publish`);
-  console.log(`  - 商品列表：GET /api/goods/list`);
-  console.log(`  - 获取用户信息：GET /api/user/info`);
-  console.log(`  - 更新用户信息：PUT /api/user/update`);
-  console.log(`  - 话题列表：GET /api/topics/list`);
-  console.log(`  - 发布帖子：POST /api/posts/publish`);
-  console.log(`  - 帖子列表：GET /api/posts/list`);
-  console.log(`  - 我的帖子：GET /api/my/posts`);
-  console.log(`  - 我的商品：GET /api/my/goods`);
-  console.log(`  - 修改帖子：PUT /api/posts/update`);
-  console.log(`  - 操作帖子：PUT /api/posts/status`);
-  console.log(`  - 修改商品：PUT /api/goods/update`);
-  console.log(`  - 操作商品：PUT /api/goods/status`);
+  console.log(`✅ 完整接口列表已加载`);
+  console.log(`✅ 标准接口列表：`);
+  console.log(`  1. GET  /api/contacts              - 获取好友列表`);
+  console.log(`  2. GET  /api/conversations         - 获取会话列表`);
+  console.log(`  3. GET  /api/messages              - 分页获取聊天记录`);
+  console.log(`  4. POST /api/messages/send         - 发送消息`);
+  console.log(`  5. PUT  /api/conversations/top     - 会话置顶/取消置顶`);
+  console.log(`  6. PUT  /api/conversations/mute    - 会话免打扰设置`);
+  console.log(`  7. DELETE /api/conversations/:id   - 删除会话`);
+  console.log(`  8. POST /api/messages/recall       - 消息撤回`);
+  console.log(`  9. POST /api/upload/image          - 图片/文件上传`);
+  console.log(` 10. GET  /api/user/online-status    - 获取用户在线状态`);
+  console.log(` 11. PUT  /api/conversations/hide    - 隐藏/取消隐藏对话`);
 });
