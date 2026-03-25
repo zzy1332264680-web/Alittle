@@ -1,12 +1,14 @@
-// src/pages/Dashboard.jsx 个人中心管理页面（按钮横向布局版）
+// src/pages/Dashboard.jsx（多语言修复版）
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '../hooks/useLanguage';
 import request from '../api/request';
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
-  const [activeTab, setActiveTab] = useState('posts'); // 'posts' | 'goods'
+  const [activeTab, setActiveTab] = useState('posts');
   const [myPosts, setMyPosts] = useState([]);
   const [myGoods, setMyGoods] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -50,7 +52,7 @@ const Dashboard = () => {
         alert(res.msg);
         getMyPosts();
       } else {
-        alert(res.msg || '操作失败');
+        alert(res.msg || t('common.failed'));
       }
     } catch (err) {
       console.error('操作失败', err);
@@ -65,20 +67,20 @@ const Dashboard = () => {
       const res = await request.put('/api/posts/status', {
         post_id: postId,
         user_id: userInfo.id,
-        status: -1 // 用-1表示已删除
+        status: -1
       });
       if (res.code === 200) {
-        alert('删除成功！');
+        alert(t('common.success'));
         getMyPosts();
       } else {
-        alert(res.msg || '删除失败');
+        alert(res.msg || t('common.failed'));
       }
     } catch (err) {
       console.error('删除失败', err);
     }
   };
 
-  // 操作商品状态（隐藏/恢复）
+  // 操作商品状态
   const handleGoodsStatus = async (goodsId, status) => {
     const confirmMsg = status === 0 ? '确定要隐藏这个商品吗？' : '确定要恢复这个商品吗？';
     if (!window.confirm(confirmMsg)) return;
@@ -93,7 +95,7 @@ const Dashboard = () => {
         alert(res.msg);
         getMyGoods();
       } else {
-        alert(res.msg || '操作失败');
+        alert(res.msg || t('common.failed'));
       }
     } catch (err) {
       console.error('操作失败', err);
@@ -108,20 +110,19 @@ const Dashboard = () => {
       const res = await request.put('/api/goods/status', {
         goods_id: goodsId,
         user_id: userInfo.id,
-        status: -1 // 用-1表示已删除
+        status: -1
       });
       if (res.code === 200) {
-        alert('删除成功！');
+        alert(t('common.success'));
         getMyGoods();
       } else {
-        alert(res.msg || '删除失败');
+        alert(res.msg || t('common.failed'));
       }
     } catch (err) {
       console.error('删除失败', err);
     }
   };
 
-  // 验证图片链接是否有效
   const isValidImageUrl = (url) => {
     if (!url) return false;
     return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image');
@@ -139,8 +140,8 @@ const Dashboard = () => {
     <div className="max-w-6xl mx-auto">
       {/* 页面头部 */}
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-800 mb-2">个人中心</h2>
-        <p className="text-gray-600">管理你的帖子和闲置商品</p>
+        <h2 className="text-3xl font-bold text-gray-800 mb-2">{t('profile.title')}</h2>
+        <p className="text-gray-600">{t('profile.myPosts')} & {t('profile.myGoods')}</p>
       </div>
 
       {/* 标签切换 */}
@@ -153,7 +154,7 @@ const Dashboard = () => {
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          我的帖子
+          {t('profile.myPosts')}
         </button>
         <button
           onClick={() => setActiveTab('goods')}
@@ -163,7 +164,7 @@ const Dashboard = () => {
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          我的闲置商品
+          {t('profile.myGoods')}
         </button>
       </div>
 
@@ -186,17 +187,17 @@ const Dashboard = () => {
                     </div>
                     <p className="text-gray-600 mb-2 line-clamp-2">{post.content}</p>
                     <div className="flex gap-4 text-sm text-gray-500">
-                      <span>发布时间：{new Date(post.create_time).toLocaleString()}</span>
+                      <span>{new Date(post.create_time).toLocaleString()}</span>
                     </div>
                   </div>
-                  {/* 操作按钮：改为横向一行排列 */}
+                  {/* 操作按钮 */}
                   <div className="flex flex-row gap-2 ml-4 flex-shrink-0">
                     {post.status !== -1 && (
                       <button
                         onClick={() => navigate(`/forum/edit/${post.id}`)}
                         className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm whitespace-nowrap"
                       >
-                        修改
+                        {t('common.edit')}
                       </button>
                     )}
                     {post.status === 1 ? (
@@ -219,7 +220,7 @@ const Dashboard = () => {
                         onClick={() => handleDeletePost(post.id)}
                         className="px-4 py-2 border border-red-300 text-red-600 rounded-md hover:bg-red-50 transition-colors text-sm whitespace-nowrap"
                       >
-                        删除
+                        {t('common.delete')}
                       </button>
                     )}
                   </div>
@@ -233,7 +234,7 @@ const Dashboard = () => {
                 onClick={() => navigate('/forum/create')}
                 className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
               >
-                去发布第一个帖子
+                {t('forum.createPost')}
               </button>
             </div>
           )}
@@ -246,12 +247,12 @@ const Dashboard = () => {
           {myGoods.length > 0 ? (
             myGoods.map((goods) => (
               <div key={goods.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-                {/* 商品图片（修复加载问题） */}
+                {/* 商品图片 */}
                 <div className="h-48 bg-gray-200 flex items-center justify-center overflow-hidden relative">
                   {isValidImageUrl(goods.image) ? (
                     <img src={goods.image} alt={goods.name} className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-gray-500">暂无商品图片</span>
+                    <span className="text-gray-500">{t('common.noData')}</span>
                   )}
                   {goods.status === 0 && (
                     <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
@@ -268,22 +269,22 @@ const Dashboard = () => {
                 <div className="p-4">
                   <h4 className="text-lg font-semibold text-gray-800 mb-2 line-clamp-1">{goods.name}</h4>
                   <p className="text-gray-600 text-sm mb-3 line-clamp-2">
-                    {goods.description || '暂无商品描述'}
+                    {goods.description || t('common.noData')}
                   </p>
                   <div className="flex justify-between items-center mb-3">
-                    <span className="text-xl font-bold text-red-600">¥{Number(goods.price).toFixed(2)}</span>
+                    <span className="text-xl font-bold text-red-600">{t('market.price')}{Number(goods.price).toFixed(2)}</span>
                     <span className="text-xs text-gray-400">
                       {new Date(goods.create_time).toLocaleDateString()}
                     </span>
                   </div>
-                  {/* 操作按钮：三个按钮统一放在同一行 */}
+                  {/* 操作按钮 */}
                   <div className="flex gap-2">
                     {goods.status !== -1 && (
                       <button
                         onClick={() => navigate(`/market/edit/${goods.id}`)}
                         className="flex-1 px-2 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
                       >
-                        修改
+                        {t('common.edit')}
                       </button>
                     )}
                     {goods.status === 1 ? (
@@ -306,7 +307,7 @@ const Dashboard = () => {
                         onClick={() => handleDeleteGoods(goods.id)}
                         className="flex-1 px-2 py-2 border border-red-300 text-red-600 rounded-md hover:bg-red-50 transition-colors text-sm"
                       >
-                        删除
+                        {t('common.delete')}
                       </button>
                     )}
                   </div>
@@ -320,7 +321,7 @@ const Dashboard = () => {
                 onClick={() => navigate('/market')}
                 className="mt-4 px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
               >
-                去发布第一个商品
+                {t('market.publishGoods')}
               </button>
             </div>
           )}

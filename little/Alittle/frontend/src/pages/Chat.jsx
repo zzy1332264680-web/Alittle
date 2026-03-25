@@ -1,15 +1,16 @@
-// src/pages/Chat.jsx 毕业设计级完整聊天页面（含好友系统+消息归属修复+会话右键菜单）
+// src/pages/Chat.jsx（多语言修复版）
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useLanguage } from '../hooks/useLanguage';
 import request from '../api/request';
 
 const Chat = () => {
+  const { t } = useLanguage();
   const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
   const messagesEndRef = useRef(null);
   const messageContainerRef = useRef(null);
   const fileInputRef = useRef(null);
   const imagePreviewRef = useRef(null);
   
-  // 状态
   const [activeTab, setActiveTab] = useState('conversation');
   const [conversations, setConversations] = useState([]);
   const [friends, setFriends] = useState([]);
@@ -25,11 +26,9 @@ const Chat = () => {
   const [previewImage, setPreviewImage] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
   
-  // 右键菜单相关
-  const [messageContextMenu, setMessageContextMenu] = useState(null); // 消息右键
-  const [convContextMenu, setConvContextMenu] = useState(null); // 会话右键
+  const [messageContextMenu, setMessageContextMenu] = useState(null);
+  const [convContextMenu, setConvContextMenu] = useState(null);
   
-  // 新增：添加好友相关状态
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -39,26 +38,22 @@ const Chat = () => {
 
   const PAGE_SIZE = 20;
 
-  // 滚动到底部
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  // 滚动到顶部
   const scrollToTop = useCallback(() => {
     if (messageContainerRef.current) {
       messageContainerRef.current.scrollTop = 100;
     }
   }, []);
 
-  // 获取会话列表（过滤已隐藏的）
   const getConversations = async () => {
     try {
       const res = await request.get('/api/chat/conversations', { 
         params: { user_id: userInfo.id } 
       });
       if (res.code === 200) {
-        // 前端也过滤一遍：只显示 is_hidden !== 1 的
         const visibleConvs = (res.data || []).filter(conv => !conv.is_hidden);
         setConversations(visibleConvs);
       }
@@ -67,7 +62,6 @@ const Chat = () => {
     }
   };
 
-  // 获取好友列表
   const getFriends = async () => {
     try {
       const res = await request.get('/api/friend/list', { 
@@ -81,7 +75,6 @@ const Chat = () => {
     }
   };
 
-  // 获取好友申请列表
   const getFriendApplies = async () => {
     try {
       const res = await request.get('/api/friend/apply/list', { 
@@ -95,7 +88,6 @@ const Chat = () => {
     }
   };
 
-  // 搜索用户
   const handleSearchUser = async () => {
     if (!searchKeyword.trim()) return;
     
@@ -118,7 +110,6 @@ const Chat = () => {
     }
   };
 
-  // 发送好友申请
   const handleSendApply = async (targetUser) => {
     if (!applyReason.trim()) {
       alert('请输入申请理由');
@@ -146,7 +137,6 @@ const Chat = () => {
     }
   };
 
-  // 处理好友申请
   const handleApply = async (apply, status) => {
     try {
       const res = await request.put('/api/friend/apply/handle', {
@@ -167,7 +157,6 @@ const Chat = () => {
     }
   };
 
-  // 获取聊天记录
   const getMessages = async (targetUserId, isLoadMore = false) => {
     if (!targetUserId) return;
     
@@ -204,7 +193,6 @@ const Chat = () => {
     }
   };
 
-  // 发送消息
   const handleSend = async () => {
     if (!inputValue.trim() || !selectedUser || sending) return;
 
@@ -232,7 +220,6 @@ const Chat = () => {
     }
   };
 
-  // 处理键盘事件
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -240,7 +227,6 @@ const Chat = () => {
     }
   };
 
-  // 处理图片选择
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -269,7 +255,6 @@ const Chat = () => {
     reader.readAsDataURL(file);
   };
 
-  // 切换聊天对象
   const handleSelectUser = async (user) => {
     setSelectedUser(user);
     setMessages([]);
@@ -287,7 +272,6 @@ const Chat = () => {
     getConversations();
   };
 
-  // ===================== 消息右键菜单相关 =====================
   const handleMessageContextMenu = (e, message) => {
     e.preventDefault();
     e.stopPropagation();
@@ -349,7 +333,6 @@ const Chat = () => {
     }
   };
 
-  // ===================== 会话右键菜单相关 =====================
   const handleConvContextMenu = (e, conv) => {
     e.preventDefault();
     e.stopPropagation();
@@ -361,7 +344,6 @@ const Chat = () => {
     });
   };
 
-  // 1. 置顶/取消置顶
   const handleTogglePin = async () => {
     if (!convContextMenu?.conv) return;
     const conv = convContextMenu.conv;
@@ -384,7 +366,6 @@ const Chat = () => {
     }
   };
 
-  // 2. 隐藏对话
   const handleHideConv = async () => {
     if (!convContextMenu?.conv) return;
     const conv = convContextMenu.conv;
@@ -399,7 +380,6 @@ const Chat = () => {
       });
       
       if (res.code === 200) {
-        // 如果当前正在和这个人聊天，取消选中
         if (selectedUser?.id === conv.target_user_id) {
           setSelectedUser(null);
         }
@@ -412,7 +392,6 @@ const Chat = () => {
     }
   };
 
-  // 3. 删除对话
   const handleDeleteConv = async () => {
     if (!convContextMenu?.conv) return;
     const conv = convContextMenu.conv;
@@ -437,7 +416,6 @@ const Chat = () => {
     }
   };
 
-  // 滚动加载更多
   const handleScroll = (e) => {
     const { scrollTop } = e.target;
     if (scrollTop <= 50 && hasMore && !loadingMore && selectedUser) {
@@ -446,7 +424,6 @@ const Chat = () => {
     }
   };
 
-  // 点击页面其他地方关闭右键菜单
   useEffect(() => {
     const handleClickOutside = () => {
       setMessageContextMenu(null);
@@ -456,21 +433,18 @@ const Chat = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // 页面加载时获取数据
   useEffect(() => {
     getConversations();
     getFriends();
     getFriendApplies();
   }, []);
 
-  // 消息变化时滚动到底部
   useEffect(() => {
     if (!loadingMore) {
       scrollToBottom();
     }
   }, [messages, loadingMore, scrollToBottom]);
 
-  // 输入时模拟"正在输入"
   useEffect(() => {
     if (inputValue.trim()) {
       setIsTyping(true);
@@ -479,7 +453,6 @@ const Chat = () => {
     }
   }, [inputValue]);
 
-  // 格式化时间
   const formatMessageTime = (dateStr) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -503,25 +476,21 @@ const Chat = () => {
 
   return (
     <div className="max-w-6xl mx-auto">
-      {/* 页面标题 */}
       <div className="mb-6 flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">实时聊天</h2>
-          <p className="text-gray-600">和好友实时沟通</p>
+          <h2 className="text-3xl font-bold text-gray-800 mb-2">{t('chat.title')}</h2>
+          <p className="text-gray-600">{t('chat.subtitle')}</p>
         </div>
         <button
           onClick={() => setShowAddFriendModal(true)}
           className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
         >
-          + 添加好友
+          {t('chat.addFriend')}
         </button>
       </div>
 
-      {/* 聊天容器 */}
       <div className="bg-white rounded-lg shadow-md h-[70vh] flex">
-        {/* 左侧：会话/通讯录tab切换 */}
         <div className="w-72 border-r bg-gray-50 flex flex-col">
-          {/* Tab切换栏 */}
           <div className="flex border-b bg-white">
             <button
               onClick={() => setActiveTab('conversation')}
@@ -531,7 +500,7 @@ const Chat = () => {
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
-              会话
+              {t('chat.conversation')}
             </button>
             <button
               onClick={() => setActiveTab('contact')}
@@ -541,7 +510,7 @@ const Chat = () => {
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
-              通讯录
+              {t('chat.contacts')}
               {friendApplies.filter(a => a.status === 0).length > 0 && (
                 <span className="ml-1 inline-flex items-center justify-center w-5 h-5 text-xs font-medium text-white bg-red-500 rounded-full">
                   {friendApplies.filter(a => a.status === 0).length}
@@ -551,7 +520,6 @@ const Chat = () => {
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {/* 会话列表 */}
             {activeTab === 'conversation' && (
               <>
                 {conversations.length > 0 ? (
@@ -598,7 +566,7 @@ const Chat = () => {
                             )}
                           </div>
                           <p className="text-sm text-gray-500 truncate">
-                            {conv.last_message || '暂无消息'}
+                            {conv.last_message || t('chat.noMessages')}
                           </p>
                         </div>
                       </div>
@@ -606,19 +574,17 @@ const Chat = () => {
                   ))
                 ) : (
                   <div className="p-4 text-center text-gray-500">
-                    暂无会话，去通讯录添加好友吧～
+                    {t('chat.noConversation')}
                   </div>
                 )}
               </>
             )}
 
-            {/* 通讯录列表 */}
             {activeTab === 'contact' && (
               <>
-                {/* 好友申请入口 */}
                 {friendApplies.filter(a => a.status === 0).length > 0 && (
                   <div className="border-b border-gray-200">
-                    <div className="px-4 py-2 text-xs text-gray-400 bg-gray-100">新的好友申请</div>
+                    <div className="px-4 py-2 text-xs text-gray-400 bg-gray-100">{t('chat.newFriendApply')}</div>
                     {friendApplies.filter(a => a.status === 0).map((apply) => (
                       <div key={`apply-${apply.id}`} className="p-4 border-b bg-yellow-50">
                         <div className="flex items-center gap-3 mb-2">
@@ -657,8 +623,7 @@ const Chat = () => {
                   </div>
                 )}
 
-                {/* 我的好友 */}
-                <div className="px-4 py-2 text-xs text-gray-400 bg-gray-100">我的好友 ({friends.length})</div>
+                <div className="px-4 py-2 text-xs text-gray-400 bg-gray-100">{t('chat.myFriends')} ({friends.length})</div>
                 {friends.length > 0 ? (
                   friends.map((friend) => (
                     <div
@@ -689,7 +654,7 @@ const Chat = () => {
                             {friend.nickname || friend.username}
                           </p>
                           <p className="text-xs text-gray-400">
-                            {friend.online_status === 'online' ? '在线' : '离线'}
+                            {friend.online_status === 'online' ? t('chat.online') : t('chat.offline')}
                           </p>
                         </div>
                       </div>
@@ -697,7 +662,7 @@ const Chat = () => {
                   ))
                 ) : (
                   <div className="p-4 text-center text-gray-500">
-                    暂无好友，点击右上角添加好友吧～
+                    {t('chat.noContacts')}
                   </div>
                 )}
               </>
@@ -705,9 +670,7 @@ const Chat = () => {
           </div>
         </div>
 
-        {/* 右侧：聊天区域 */}
         <div className="flex-1 flex flex-col">
-          {/* 顶部信息栏 */}
           {selectedUser && (
             <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -723,7 +686,7 @@ const Chat = () => {
                     {selectedUser.nickname || selectedUser.username}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {isTyping ? '对方正在输入...' : '在线'}
+                    {isTyping ? t('chat.typing') : t('chat.online')}
                   </p>
                 </div>
               </div>
@@ -738,7 +701,6 @@ const Chat = () => {
             </div>
           )}
 
-          {/* 消息列表 */}
           <div 
             ref={messageContainerRef}
             className="flex-grow overflow-y-auto p-6 space-y-4 bg-gray-50"
@@ -747,13 +709,13 @@ const Chat = () => {
           >
             {!selectedUser ? (
               <div className="h-full flex items-center justify-center text-gray-400">
-                请选择一个联系人开始聊天
+                {t('chat.selectContact')}
               </div>
             ) : messages.length > 0 ? (
               <>
                 {loadingMore && (
                   <div className="text-center text-gray-400 text-sm py-2">
-                    加载中...
+                    {t('chat.loadMore')}
                   </div>
                 )}
                 
@@ -828,25 +790,10 @@ const Chat = () => {
                           {isMe && !msg.is_recalled && (
                             <div className="flex items-center mt-1 gap-1">
                               {msg.status === 'sending' && (
-                                <span className="text-xs text-gray-400">发送中...</span>
+                                <span className="text-xs text-gray-400">{t('chat.sending')}</span>
                               )}
                               {msg.status === 'failed' && (
                                 <span className="text-xs text-red-500">发送失败</span>
-                              )}
-                              {msg.status === 'sent' && (
-                                <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                                </svg>
-                              )}
-                              {msg.status === 'delivered' && (
-                                <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                                </svg>
-                              )}
-                              {msg.status === 'read' && (
-                                <svg className="w-3 h-3 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" />
-                                </svg>
                               )}
                             </div>
                           )}
@@ -859,12 +806,11 @@ const Chat = () => {
               </>
             ) : (
               <div className="h-full flex items-center justify-center text-gray-400">
-                暂无消息，开始聊天吧～
+                {t('chat.noMessages')}
               </div>
             )}
           </div>
 
-          {/* 底部输入控制区 */}
           {selectedUser && (
             <div className="border-t bg-white">
               {showExtensionMenu && (
@@ -925,7 +871,7 @@ const Chat = () => {
                       value={inputValue}
                       onChange={(e) => setInputValue(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      placeholder="输入消息..."
+                      placeholder={t('chat.inputPlaceholder')}
                       disabled={sending}
                       rows={1}
                       className="w-full px-4 py-3 border border-gray-300 rounded-2xl focus:outline-none focus:border-blue-500 resize-none disabled:bg-gray-100"
@@ -946,7 +892,7 @@ const Chat = () => {
                         : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                     }`}
                   >
-                    {sending ? '发送中...' : '发送'}
+                    {sending ? t('chat.sending') : t('chat.send')}
                   </button>
                 </div>
               </div>
@@ -955,12 +901,11 @@ const Chat = () => {
         </div>
       </div>
 
-      {/* 添加好友弹窗 */}
       {showAddFriendModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="p-4 border-b flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-800">添加好友</h3>
+              <h3 className="text-lg font-semibold text-gray-800">{t('chat.addFriend')}</h3>
               <button 
                 onClick={() => {
                   setShowAddFriendModal(false);
@@ -989,7 +934,7 @@ const Chat = () => {
                   disabled={searching || !searchKeyword.trim()}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
                 >
-                  {searching ? '搜索中...' : '搜索'}
+                  {searching ? t('common.loading') : '搜索'}
                 </button>
               </div>
 
@@ -1018,7 +963,7 @@ const Chat = () => {
                         onClick={() => handleSendApply(user)}
                         className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
                       >
-                        添加好友
+                        {t('chat.addFriend')}
                       </button>
                     </div>
                   ))}
@@ -1050,7 +995,6 @@ const Chat = () => {
         </div>
       )}
 
-      {/* 消息右键菜单 */}
       {messageContextMenu && (
         <div
           className="fixed bg-white rounded-lg shadow-xl border py-2 z-50 min-w-[160px]"
@@ -1068,7 +1012,7 @@ const Chat = () => {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
-              复制文本
+              {t('chat.copy')}
             </button>
           )}
           {messageContextMenu.message.from_user_id === userInfo.id && !messageContextMenu.message.is_recalled && (
@@ -1079,7 +1023,7 @@ const Chat = () => {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
               </svg>
-              撤回消息
+              {t('chat.recall')}
             </button>
           )}
           <button
@@ -1089,12 +1033,11 @@ const Chat = () => {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
-            删除消息
+            {t('chat.delete')}
           </button>
         </div>
       )}
 
-      {/* 会话右键菜单 */}
       {convContextMenu && (
         <div
           className="fixed bg-white rounded-lg shadow-xl border py-2 z-50 min-w-[160px]"
@@ -1111,7 +1054,7 @@ const Chat = () => {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H7a2 2 0 01-2-2V5z" />
             </svg>
-            {convContextMenu.conv.is_pinned ? '取消置顶' : '置顶对话'}
+            {convContextMenu.conv.is_pinned ? t('chat.unpin') : t('chat.pin')}
           </button>
           
           <button
@@ -1121,7 +1064,7 @@ const Chat = () => {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
             </svg>
-            隐藏对话
+            {t('chat.hide')}
           </button>
           
           <button
@@ -1131,12 +1074,11 @@ const Chat = () => {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
-            删除对话
+            {t('chat.deleteConv')}
           </button>
         </div>
       )}
 
-      {/* 图片预览弹窗 */}
       {previewImage && (
         <div 
           className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center"

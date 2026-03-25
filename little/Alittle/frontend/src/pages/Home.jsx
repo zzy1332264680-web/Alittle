@@ -1,31 +1,33 @@
-// src/pages/Home.jsx 首页功能导航
+// src/pages/Home.jsx 首页功能导航（多语言修复版）
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '../hooks/useLanguage';
 
 const Home = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   // 功能导航数据
   const features = [
     {
       id: 1,
-      title: '好友聊天',
-      description: '和好友实时聊天，分享生活点滴',
+      titleKey: 'nav.chat',
+      descKey: 'home.chatDesc',
       icon: '💬',
       path: '/chat',
       color: 'blue'
     },
     {
       id: 2,
-      title: '论坛发帖',
-      description: '分享想法，参与讨论，认识新朋友',
+      titleKey: 'nav.forum',
+      descKey: 'home.forumDesc',
       icon: '📝',
       path: '/forum',
       color: 'purple'
     },
     {
       id: 3,
-      title: '闲置交易',
-      description: '买卖闲置物品，让资源流动起来',
+      titleKey: 'nav.market',
+      descKey: 'home.marketDesc',
       icon: '🛒',
       path: '/market',
       color: 'green'
@@ -43,8 +45,8 @@ const Home = () => {
     <div className="max-w-6xl mx-auto">
       {/* 首页欢迎区 */}
       <div className="text-center mb-12 pt-8">
-        <h2 className="text-3xl font-bold text-gray-800 mb-4">欢迎来到 Alittle</h2>
-        <p className="text-gray-600 text-lg">选择下方功能，开始你的体验</p>
+        <h2 className="text-3xl font-bold text-gray-800 mb-4">{t('home.title')}</h2>
+        <p className="text-gray-600 text-lg">{t('home.subtitle')}</p>
       </div>
 
       {/* 功能导航卡片 */}
@@ -56,10 +58,10 @@ const Home = () => {
             onClick={() => navigate(feature.path)}
           >
             <div className="text-5xl mb-4">{feature.icon}</div>
-            <h3 className="text-2xl font-bold text-gray-800 mb-3">{feature.title}</h3>
-            <p className="text-gray-600 mb-6">{feature.description}</p>
+            <h3 className="text-2xl font-bold text-gray-800 mb-3">{t(feature.titleKey)}</h3>
+            <p className="text-gray-600 mb-6">{t(feature.descKey)}</p>
             <button className={`w-full py-3 text-white rounded-md transition-colors ${colorMap[feature.color]}`}>
-              立即进入
+              {t('home.enterNow')}
             </button>
           </div>
         ))}

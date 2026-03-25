@@ -1,20 +1,19 @@
+// src/pages/Register.jsx（多语言修复版）
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useLanguage } from '../hooks/useLanguage';
 import request from '../api/request';
 
-// 工具函数：验证邮箱格式
 const validateEmail = (email) => {
   const reg = /^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
   return reg.test(email);
 };
 
-// 工具函数：验证用户名（2-20位，中文/字母/数字/下划线）
 const validateNickname = (nickname) => {
   const reg = /^[\u4e00-\u9fa5a-zA-Z0-9_]{2,20}$/;
   return reg.test(nickname);
 };
 
-// 工具函数：计算密码强度
 const getPasswordStrength = (password) => {
   if (password.length < 8) return 'weak';
   const hasLetter = /[a-zA-Z]/.test(password);
@@ -26,7 +25,9 @@ const getPasswordStrength = (password) => {
 };
 
 const Register = () => {
-  // 表单状态：用户名、邮箱、密码、确认密码、协议勾选
+  const { t } = useLanguage();
+  const navigate = useNavigate();
+
   const [form, setForm] = useState({
     nickname: '',
     email: '',
@@ -35,7 +36,6 @@ const Register = () => {
     agree: false
   });
 
-  // 错误提示
   const [errors, setErrors] = useState({
     nickname: '',
     email: '',
@@ -43,33 +43,27 @@ const Register = () => {
     confirmPwd: ''
   });
 
-  // 密码显隐 + 强度
   const [showPwd, setShowPwd] = useState(false);
   const [pwdStrength, setPwdStrength] = useState('weak');
-  
-  // 加载状态
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const [showModal, setShowModal] = useState('');
 
-  // 用户名实时验证（含后端查重）
   const handleNicknameChange = async (e) => {
     const value = e.target.value;
     setForm({ ...form, nickname: value });
     let error = '';
 
-    // 前端基础验证
     if (value.length < 2 || value.length > 20) {
       error = '用户名需为2-20位';
     } else if (!validateNickname(value)) {
       error = '用户名仅允许中文、字母、数字、下划线';
     }
 
-    // 后端接口查重（核心：对接你的后端）
     if (!error && value) {
       try {
         const res = await request.post('/api/auth/check-nickname', { nickname: value });
         if (!res.success) {
-          error = res.msg || '用户名已被使用';
+          error = res.msg || t('register.nicknameExists');
         }
       } catch (err) {
         console.error('检查用户名失败：', err);
@@ -80,7 +74,6 @@ const Register = () => {
     setErrors({ ...errors, nickname: error });
   };
 
-  // 邮箱实时验证
   const handleEmailChange = (e) => {
     const value = e.target.value;
     setForm({ ...form, email: value });
@@ -91,7 +84,6 @@ const Register = () => {
     setErrors({ ...errors, email: error });
   };
 
-  // 密码实时验证 + 强度计算
   const handlePasswordChange = (e) => {
     const value = e.target.value;
     setForm({ ...form, password: value });
@@ -105,31 +97,26 @@ const Register = () => {
 
     setErrors({ ...errors, password: error });
     setPwdStrength(getPasswordStrength(value));
-    // 同步验证确认密码
     if (form.confirmPwd) {
       handleConfirmPwdChange({ target: { value: form.confirmPwd } });
     }
   };
 
-  // 确认密码实时验证
   const handleConfirmPwdChange = (e) => {
     const value = e.target.value;
     setForm({ ...form, confirmPwd: value });
     let error = '';
     if (value && value !== form.password) {
-      error = '两次输入的密码不一致';
+      error = t('register.passwordNotMatch');
     }
     setErrors({ ...errors, confirmPwd: error });
   };
 
-  // 注册提交（对接后端接口）
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // 前端全量验证
     let hasError = false;
     const newErrors = { ...errors };
 
-    // 用户名验证
     if (!form.nickname) {
       newErrors.nickname = '请输入用户名';
       hasError = true;
@@ -141,7 +128,6 @@ const Register = () => {
       hasError = true;
     }
 
-    // 邮箱验证
     if (!form.email) {
       newErrors.email = '请输入邮箱';
       hasError = true;
@@ -150,7 +136,6 @@ const Register = () => {
       hasError = true;
     }
 
-    // 密码验证
     if (!form.password) {
       newErrors.password = '请输入密码';
       hasError = true;
@@ -162,16 +147,14 @@ const Register = () => {
       hasError = true;
     }
 
-    // 确认密码验证
     if (!form.confirmPwd) {
       newErrors.confirmPwd = '请确认密码';
       hasError = true;
     } else if (form.confirmPwd !== form.password) {
-      newErrors.confirmPwd = '两次输入的密码不一致';
+      newErrors.confirmPwd = t('register.passwordNotMatch');
       hasError = true;
     }
 
-    // 协议勾选验证
     if (!form.agree) {
       alert('请同意用户协议和隐私政策');
       hasError = true;
@@ -182,7 +165,6 @@ const Register = () => {
       return;
     }
 
-    // 调用后端注册接口
     try {
       setLoading(true);
       const res = await request.post('/api/auth/register', {
@@ -192,10 +174,10 @@ const Register = () => {
       });
 
       if (res.code === 200) {
-        alert('注册成功！即将跳转到登录页');
+        alert(t('register.registerSuccess'));
         navigate('/login');
       } else {
-        alert(res.msg || '注册失败，请检查信息后重试');
+        alert(res.msg || t('common.failed'));
       }
     } catch (err) {
       console.error('注册失败：', err);
@@ -205,7 +187,6 @@ const Register = () => {
     }
   };
 
-  // 密码强度样式
   const getStrengthStyle = () => {
     switch (pwdStrength) {
       case 'weak': return 'bg-red-400 w-1/3';
@@ -215,52 +196,46 @@ const Register = () => {
     }
   };
 
-  // 协议弹窗状态
-  const [showModal, setShowModal] = useState('');
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
       <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-md">
-        <h2 className="text-2xl font-bold text-center mb-8 text-blue-600">注册</h2>
+        <h2 className="text-2xl font-bold text-center mb-8 text-blue-600">{t('register.title')}</h2>
         
         <form onSubmit={handleSubmit}>
-          {/* 用户名输入框 */}
           <div className="mb-4">
-            <label className="block text-gray-700 mb-2">用户名</label>
+            <label className="block text-gray-700 mb-2">{t('register.nickname')}</label>
             <input
               type="text"
               value={form.nickname}
               onChange={handleNicknameChange}
               className={`w-full px-3 py-2 border rounded-md focus:outline-none ${errors.nickname ? 'border-red-500' : 'border-gray-300 focus:border-blue-500'}`}
-              placeholder="请输入2-20位用户名（中文/字母/数字/下划线）"
+              placeholder={t('register.nicknamePlaceholder')}
               maxLength={20}
             />
             {errors.nickname && <p className="text-red-500 text-sm mt-1">{errors.nickname}</p>}
           </div>
 
-          {/* 邮箱输入框 */}
           <div className="mb-4">
-            <label className="block text-gray-700 mb-2">邮箱</label>
+            <label className="block text-gray-700 mb-2">{t('register.email')}</label>
             <input
               type="email"
               value={form.email}
               onChange={handleEmailChange}
               className={`w-full px-3 py-2 border rounded-md focus:outline-none ${errors.email ? 'border-red-500' : 'border-gray-300 focus:border-blue-500'}`}
-              placeholder="请输入您的邮箱"
+              placeholder={t('register.emailPlaceholder')}
             />
             {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
           </div>
 
-          {/* 密码输入框 + 显隐按钮 */}
           <div className="mb-2">
-            <label className="block text-gray-700 mb-2">密码</label>
+            <label className="block text-gray-700 mb-2">{t('register.password')}</label>
             <div className="relative">
               <input
                 type={showPwd ? 'text' : 'password'}
                 value={form.password}
                 onChange={handlePasswordChange}
                 className={`w-full px-3 py-2 border rounded-md focus:outline-none ${errors.password ? 'border-red-500' : 'border-gray-300 focus:border-blue-500'}`}
-                placeholder="请输入6-20位密码（含字母和数字）"
+                placeholder={t('register.passwordPlaceholder')}
                 maxLength={20}
               />
               <button
@@ -274,28 +249,25 @@ const Register = () => {
             {errors.password && <p className="text-red-500 text-sm mt-1">{errors.password}</p>}
           </div>
 
-          {/* 密码强度进度条 */}
           {form.password && (
             <div className="mb-4 h-2 w-full bg-gray-200 rounded overflow-hidden">
               <div className={`h-full ${getStrengthStyle()} transition-all duration-300`}></div>
             </div>
           )}
 
-          {/* 确认密码输入框 */}
           <div className="mb-6">
-            <label className="block text-gray-700 mb-2">确认密码</label>
+            <label className="block text-gray-700 mb-2">{t('register.confirmPassword')}</label>
             <input
               type={showPwd ? 'text' : 'password'}
               value={form.confirmPwd}
               onChange={handleConfirmPwdChange}
               className={`w-full px-3 py-2 border rounded-md focus:outline-none ${errors.confirmPwd ? 'border-red-500' : 'border-gray-300 focus:border-blue-500'}`}
-              placeholder="请再次输入密码"
+              placeholder={t('register.confirmPasswordPlaceholder')}
               maxLength={20}
             />
             {errors.confirmPwd && <p className="text-red-500 text-sm mt-1">{errors.confirmPwd}</p>}
           </div>
 
-          {/* 协议勾选框 */}
           <div className="mb-6 flex items-center">
             <input
               type="checkbox"
@@ -317,23 +289,20 @@ const Register = () => {
             </p>
           </div>
 
-          {/* 注册按钮 */}
           <button
             type="submit"
             disabled={loading || !form.agree}
             className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? '注册中...' : '注册'}
+            {loading ? t('common.loading') : t('register.register')}
           </button>
         </form>
 
-        {/* 登录跳转链接 */}
         <div className="text-center mt-6 text-sm text-gray-600">
-          已有账号？<Link to="/login" className="text-blue-600 hover:underline">立即登录</Link>
+          {t('register.hasAccount')}<Link to="/login" className="text-blue-600 hover:underline">{t('register.loginNow')}</Link>
         </div>
       </div>
 
-      {/* 协议弹窗 */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto">

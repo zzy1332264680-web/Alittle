@@ -1,10 +1,12 @@
-// src/components/Layout.jsx 带头像下拉菜单+个人中心导航的全局布局（支持用户头像）
+// src/components/Layout.jsx（最终修复版，Logo固定为Чуть-чуть，全多语言适配）
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
+import { useLanguage } from '../hooks/useLanguage.jsx'; // 新增
 import { useState, useRef, useEffect } from 'react';
 
 const Layout = () => {
   const { logout } = useAuth();
+  const { t } = useLanguage(); // 新增
   const navigate = useNavigate();
   const location = useLocation();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -26,25 +28,25 @@ const Layout = () => {
   const handleLogout = () => {
     logout();
     localStorage.removeItem('userInfo');
-    alert('退出登录成功！');
+    alert(t('common.success'));
     navigate('/login');
   };
 
-  // 导航菜单数据（新增个人中心）
+  // 导航菜单数据（多语言版）
   const navItems = [
-    { path: '/', label: '首页' },
-    { path: '/chat', label: '好友聊天' },
-    { path: '/forum', label: '论坛发帖' },
-    { path: '/market', label: '闲置交易' },
-    { path: '/dashboard', label: '个人中心' }
+    { path: '/', labelKey: 'nav.home' },
+    { path: '/chat', labelKey: 'nav.chat' },
+    { path: '/forum', labelKey: 'nav.forum' },
+    { path: '/market', labelKey: 'nav.market' },
+    { path: '/dashboard', labelKey: 'nav.profile' }
   ];
 
-  // 下拉菜单数据
+  // 下拉菜单数据（多语言版）
   const dropdownItems = [
-    { path: '/profile', label: '个人中心', icon: '👤' },
-    { path: '/settings', label: '设置', icon: '⚙️' },
+    { path: '/profile', labelKey: 'nav.profile', icon: '👤' },
+    { path: '/settings', labelKey: 'profile.settings', icon: '⚙️' },
     { type: 'divider' },
-    { label: '退出登录', icon: '🚪', onClick: handleLogout }
+    { labelKey: 'profile.logout', icon: '🚪', onClick: handleLogout }
   ];
 
   return (
@@ -53,8 +55,9 @@ const Layout = () => {
       <header className="bg-blue-600 text-white">
         {/* 顶部栏：Logo + 头像下拉菜单 */}
         <div className="container mx-auto px-6 py-4 flex justify-between items-center">
+          {/* 【核心修复】Logo固定为 Чуть-чуть，彻底删除Alittle */}
           <h1 className="text-xl font-bold cursor-pointer" onClick={() => navigate('/')}>
-            Alittle
+            Чуть-чуть
           </h1>
           
           {/* 头像下拉菜单 */}
@@ -75,7 +78,7 @@ const Layout = () => {
               <span className={`transform transition-transform ${showDropdown ? 'rotate-180' : ''}`}>▼</span>
             </button>
 
-            {/* 下拉菜单内容 */}
+            {/* 下拉菜单内容（多语言版） */}
             {showDropdown && (
               <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg py-2 z-50">
                 {dropdownItems.map((item, index) => (
@@ -95,7 +98,7 @@ const Layout = () => {
                       className="w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                     >
                       <span>{item.icon}</span>
-                      <span>{item.label}</span>
+                      <span>{t(item.labelKey)}</span>
                     </button>
                   )
                 ))}
@@ -104,7 +107,7 @@ const Layout = () => {
           </div>
         </div>
 
-        {/* 功能导航栏 */}
+        {/* 功能导航栏（多语言版） */}
         <nav className="bg-blue-700">
           <div className="container mx-auto px-6">
             <ul className="flex gap-8">
@@ -118,7 +121,7 @@ const Layout = () => {
                         : 'text-blue-100 hover:text-white'
                     }`}
                   >
-                    {item.label}
+                    {t(item.labelKey)}
                   </button>
                 </li>
               ))}
@@ -132,9 +135,9 @@ const Layout = () => {
         <Outlet />
       </main>
       
-      {/* 底部 */}
+      {/* 底部（核心修复：彻底删除Alittle，固定为Чуть-чуть） */}
       <footer className="bg-gray-200 py-4 px-6 text-center text-gray-600 text-sm">
-        © 2026 Alittle 版权所有
+        © 2026 Чуть-чуть {t('common.allRightsReserved')}
       </footer>
     </div>
   );

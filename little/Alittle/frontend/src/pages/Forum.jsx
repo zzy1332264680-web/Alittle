@@ -1,10 +1,12 @@
-// src/pages/Forum.jsx 完整论坛页面（支持用户头像）
+// src/pages/Forum.jsx 完整论坛页面（支持用户头像+多语言版）
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '../hooks/useLanguage'; // 新增
 import request from '../api/request';
 
 const Forum = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage(); // 新增
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -32,8 +34,8 @@ const Forum = () => {
       {/* 页面头部 */}
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold text-gray-800 mb-2">论坛发帖</h2>
-          <p className="text-gray-600">分享你的想法，和大家一起讨论</p>
+          <h2 className="text-3xl font-bold text-gray-800 mb-2">{t('nav.forum')}</h2>
+          <p className="text-gray-600">{t('forum.subtitle')}</p>
         </div>
         {/* 发帖按钮 */}
         <button
@@ -41,14 +43,14 @@ const Forum = () => {
           className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2"
         >
           <span>+</span>
-          <span>发布帖子</span>
+          <span>{t('forum.createPost')}</span>
         </button>
       </div>
 
       {/* 帖子列表 */}
       <div className="space-y-6">
         {loading ? (
-          <div className="text-center py-12 text-gray-500">加载中...</div>
+          <div className="text-center py-12 text-gray-500">{t('common.loading')}</div>
         ) : posts.length > 0 ? (
           posts.map((post) => (
             <div key={post.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
@@ -67,7 +69,7 @@ const Forum = () => {
                   </div>
                   <div>
                     <p className="font-medium text-gray-800">
-                      {post.is_anonymous ? '匿名用户' : post.publisher_name}
+                      {post.is_anonymous ? t('forum.anonymous') : post.publisher_name}
                     </p>
                     <p className="text-sm text-gray-500">
                       {new Date(post.create_time).toLocaleString()}
@@ -128,7 +130,7 @@ const Forum = () => {
           ))
         ) : (
           <div className="text-center py-12 bg-white rounded-lg shadow-md">
-            <p className="text-gray-500 text-lg">暂无帖子，快来发布第一个帖子吧～</p>
+            <p className="text-gray-500 text-lg">{t('forum.noPosts')}</p>
           </div>
         )}
       </div>

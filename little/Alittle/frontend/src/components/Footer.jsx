@@ -1,9 +1,12 @@
+// src/components/Footer.jsx（最终修复版，Logo固定为Чуть-чуть，多语言适配）
+import { useLanguage } from '../hooks/useLanguage';
+
 const Footer = () => {
+  const { t } = useLanguage();
   return (
-    <footer className="bg-white mt-10 py-6">
+    <footer className="bg-gray-50 border-t mt-auto py-6">
       <div className="container mx-auto px-4 text-center text-gray-500 text-sm">
-        <p>© 2025 SimpleShop - 极简社交电商平台</p>
-        <p className="mt-2">使用 React + Tailwind CSS 构建</p>
+        <p>© 2026 Чуть-чуть {t('common.allRightsReserved')}</p>
       </div>
     </footer>
   );
