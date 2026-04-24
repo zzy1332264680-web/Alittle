@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './hooks/useAuth.jsx';
-import { LanguageProvider } from './hooks/useLanguage.jsx'; // 新增
+import { AuthProvider } from './hooks/AuthProvider.jsx';
+import { LanguageProvider } from './hooks/LanguageProvider.jsx';
 import AuthRoute from './components/AuthRoute.jsx';
 import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
@@ -19,7 +19,7 @@ import Dashboard from './pages/Dashboard.jsx';
 function App() {
   return (
     <BrowserRouter>
-      <LanguageProvider> {/* 新增：包裹在最外层 */}
+      <LanguageProvider>
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<Login />} />

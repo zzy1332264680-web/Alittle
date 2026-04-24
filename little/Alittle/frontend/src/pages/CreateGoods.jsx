@@ -1,8 +1,24 @@
 // src/pages/CreateGoods.jsx（最终无错版）
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLanguage } from '../hooks/useLanguage';
 import request from '../api/request';
+
+const CATEGORIES = [
+  { value: 'digital', labelKey: 'createGoods.categoryOptions.digital' },
+  { value: 'clothing', labelKey: 'createGoods.categoryOptions.clothing' },
+  { value: 'home', labelKey: 'createGoods.categoryOptions.home' },
+  { value: 'book', labelKey: 'createGoods.categoryOptions.book' },
+  { value: 'sports', labelKey: 'createGoods.categoryOptions.sports' },
+  { value: 'other', labelKey: 'createGoods.categoryOptions.other' }
+];
+
+const CONDITIONS = [
+  { value: 'new', labelKey: 'createGoods.conditionOptions.new' },
+  { value: 'like_new', labelKey: 'createGoods.conditionOptions.like_new' },
+  { value: 'good', labelKey: 'createGoods.conditionOptions.good' },
+  { value: 'usable', labelKey: 'createGoods.conditionOptions.usable' }
+];
 
 const CreateGoods = () => {
   const navigate = useNavigate();
@@ -30,23 +46,7 @@ const CreateGoods = () => {
   const IMAGE_MAX = 9;
 
   // 分类和新旧程度配置（修正翻译key）
-  const categories = [
-    { value: 'digital', labelKey: 'createGoods.categoryOptions.digital' },
-    { value: 'clothing', labelKey: 'createGoods.categoryOptions.clothing' },
-    { value: 'home', labelKey: 'createGoods.categoryOptions.home' },
-    { value: 'book', labelKey: 'createGoods.categoryOptions.book' },
-    { value: 'sports', labelKey: 'createGoods.categoryOptions.sports' },
-    { value: 'other', labelKey: 'createGoods.categoryOptions.other' }
-  ];
-
-  const conditions = [
-    { value: 'new', labelKey: 'createGoods.conditionOptions.new' },
-    { value: 'like_new', labelKey: 'createGoods.conditionOptions.like_new' },
-    { value: 'good', labelKey: 'createGoods.conditionOptions.good' },
-    { value: 'usable', labelKey: 'createGoods.conditionOptions.usable' }
-  ];
-
-  const loadGoodsData = async () => {
+  const loadGoodsData = useCallback(async () => {
     if (!isEdit) return;
 
     try {
@@ -63,7 +63,7 @@ const CreateGoods = () => {
             const categoryMatch = pureDescription.match(/【分类】(.*?)(\n|$)/);
             if (categoryMatch) {
               const categoryLabel = categoryMatch[1].trim();
-              const foundCategory = categories.find(c => t(c.labelKey) === categoryLabel);
+              const foundCategory = CATEGORIES.find(c => t(c.labelKey) === categoryLabel);
               if (foundCategory) {
                 category = foundCategory.value;
               }
@@ -74,7 +74,7 @@ const CreateGoods = () => {
             const conditionMatch = pureDescription.match(/【新旧程度】(.*?)(\n|$)/);
             if (conditionMatch) {
               const conditionLabel = conditionMatch[1].trim();
-              const foundCondition = conditions.find(c => t(c.labelKey) === conditionLabel);
+              const foundCondition = CONDITIONS.find(c => t(c.labelKey) === conditionLabel);
               if (foundCondition) {
                 condition = foundCondition.value;
               }
@@ -102,7 +102,7 @@ const CreateGoods = () => {
     } finally {
       setPageLoading(false);
     }
-  };
+  }, [id, isEdit, navigate, t, userInfo.id]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -192,8 +192,8 @@ const CreateGoods = () => {
 
     try {
       setLoading(true);
-      const selectedCategory = categories.find(c => c.value === form.category);
-      const selectedCondition = conditions.find(c => c.value === form.condition);
+      const selectedCategory = CATEGORIES.find(c => c.value === form.category);
+      const selectedCondition = CONDITIONS.find(c => c.value === form.condition);
       const requestData = {
         user_id: userInfo.id,
         name: form.name.trim(),
@@ -237,7 +237,7 @@ const CreateGoods = () => {
 
   useEffect(() => {
     loadGoodsData();
-  }, []);
+  }, [loadGoodsData]);
 
   if (pageLoading) {
     return (
@@ -311,7 +311,7 @@ const CreateGoods = () => {
               className="w-full px-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
             >
               <option value="">{t('createGoods.selectCategory')}</option>
-              {categories.map((cat) => (
+              {CATEGORIES.map((cat) => (
                 <option key={cat.value} value={cat.value}>{t(cat.labelKey)}</option>
               ))}
             </select>
@@ -321,7 +321,7 @@ const CreateGoods = () => {
         <div className="mb-6">
           <label className="text-gray-700 font-medium mb-3 block">{t('createGoods.condition')}</label>
           <div className="flex flex-wrap gap-3">
-            {conditions.map((cond) => (
+            {CONDITIONS.map((cond) => (
               <button
                 key={cond.value}
                 type="button"

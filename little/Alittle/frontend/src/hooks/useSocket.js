@@ -1,37 +1,41 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import io from 'socket.io-client';
 
 export const useSocket = () => {
   const [socket, setSocket] = useState(null);
+  const socketRef = useRef(null);
   const [messages, setMessages] = useState([]);
 
-  // 初始化Socket连接
   useEffect(() => {
-    // 连接到后端Socket服务（地址和API一致）
-    const newSocket = io('http://localhost:3001');
-    setSocket(newSocket);
+    const connection = io('http://localhost:3001');
+    socketRef.current = connection;
 
-    // 监听聊天消息
-    newSocket.on('chat message', (msg) => {
-      setMessages(prev => [...prev, msg]);
+    connection.on('connect', () => {
+      setSocket(connection);
     });
 
-    // 组件卸载时关闭连接
+    connection.on('chat message', (message) => {
+      setMessages((prev) => [...prev, message]);
+    });
+
     return () => {
-      newSocket.disconnect();
+      connection.disconnect();
+      socketRef.current = null;
+      setSocket(null);
     };
   }, []);
 
-  // 发送消息方法
   const sendMessage = useCallback((content) => {
-    if (socket) {
-      socket.emit('chat message', {
-        content,
-        userId: localStorage.getItem('userId') || 'guest', // 模拟用户ID
-        time: new Date().toLocaleTimeString(),
-      });
+    if (!socketRef.current) {
+      return;
     }
-  }, [socket]);
+
+    socketRef.current.emit('chat message', {
+      content,
+      userId: localStorage.getItem('userId') || 'guest',
+      time: new Date().toLocaleTimeString(),
+    });
+  }, []);
 
   return { socket, messages, sendMessage };
 };

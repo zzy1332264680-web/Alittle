@@ -1,5 +1,5 @@
 // src/pages/Dashboard.jsx（多语言修复版）
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../hooks/useLanguage';
 import request from '../api/request';
@@ -11,10 +11,9 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('posts');
   const [myPosts, setMyPosts] = useState([]);
   const [myGoods, setMyGoods] = useState([]);
-  const [loading, setLoading] = useState(false);
 
   // 获取我的帖子
-  const getMyPosts = async () => {
+  const getMyPosts = useCallback(async () => {
     try {
       const res = await request.get('/api/my/posts', { params: { user_id: userInfo.id } });
       if (res.code === 200) {
@@ -23,10 +22,10 @@ const Dashboard = () => {
     } catch (err) {
       console.error('获取我的帖子失败', err);
     }
-  };
+  }, [userInfo.id]);
 
   // 获取我的商品
-  const getMyGoods = async () => {
+  const getMyGoods = useCallback(async () => {
     try {
       const res = await request.get('/api/my/goods', { params: { user_id: userInfo.id } });
       if (res.code === 200) {
@@ -35,7 +34,7 @@ const Dashboard = () => {
     } catch (err) {
       console.error('获取我的商品失败', err);
     }
-  };
+  }, [userInfo.id]);
 
   // 操作帖子状态
   const handlePostStatus = async (postId, status) => {
@@ -129,12 +128,27 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    if (activeTab === 'posts') {
-      getMyPosts();
-    } else {
-      getMyGoods();
-    }
-  }, [activeTab]);
+    let cancelled = false;
+
+    const loadCurrentTab = async () => {
+      if (cancelled) {
+        return;
+      }
+
+      if (activeTab === 'posts') {
+        await getMyPosts();
+        return;
+      }
+
+      await getMyGoods();
+    };
+
+    loadCurrentTab();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, getMyGoods, getMyPosts]);
 
   return (
     <div className="max-w-6xl mx-auto">

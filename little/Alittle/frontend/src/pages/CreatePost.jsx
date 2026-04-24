@@ -1,5 +1,5 @@
 // src/pages/CreatePost.jsx（最终无错完整版，修复标签闭合+语法错误）
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLanguage } from '../hooks/useLanguage';
 import request from '../api/request';
@@ -39,7 +39,7 @@ const CreatePost = () => {
     { value: 'fans', labelKey: 'createPost.visibilityOptions.fans' }
   ];
 
-  const getPostDetail = async () => {
+  const getPostDetail = useCallback(async () => {
     if (!isEditMode) return;
     try {
       setFetchingPost(true);
@@ -65,11 +65,11 @@ const CreatePost = () => {
     } finally {
       setFetchingPost(false);
     }
-  };
+  }, [id, isEditMode, navigate, t, userInfo.id]);
 
   useEffect(() => {
     getPostDetail();
-  }, [id]);
+  }, [getPostDetail]);
 
   const getTopics = async () => {
     try {

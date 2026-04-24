@@ -1,10 +1,10 @@
 // src/pages/Profile.jsx 个人中心页面（优化头像上传版+多语言版）
-import { useState, useEffect, useRef } from 'react';
-import { useLanguage } from '../hooks/useLanguage'; // 新增
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLanguage } from '../hooks/useLanguage';
 import request from '../api/request';
 
 const Profile = () => {
-  const { t } = useLanguage(); // 新增
+  const { t } = useLanguage();
   const [userInfo, setUserInfo] = useState({});
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(false);
@@ -14,7 +14,7 @@ const Profile = () => {
   const currentUser = JSON.parse(localStorage.getItem('userInfo') || '{}');
 
   // 获取用户信息
-  const getUserInfo = async () => {
+  const getUserInfo = useCallback(async () => {
     try {
       const res = await request.get('/api/user/info', { params: { user_id: currentUser.id } });
       if (res.code === 200) {
@@ -25,7 +25,7 @@ const Profile = () => {
     } catch (err) {
       console.error('获取用户信息失败：', err);
     }
-  };
+  }, [currentUser.id]);
 
   // 表单变化
   const handleFormChange = (e) => {
@@ -134,7 +134,7 @@ const Profile = () => {
 
   useEffect(() => {
     getUserInfo();
-  }, []);
+  }, [getUserInfo]);
 
   return (
     <div className="max-w-4xl mx-auto">

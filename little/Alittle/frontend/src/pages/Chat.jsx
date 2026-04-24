@@ -17,7 +17,6 @@ const Chat = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
-  const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -48,7 +47,7 @@ const Chat = () => {
     }
   }, []);
 
-  const getConversations = async () => {
+  const getConversations = useCallback(async () => {
     try {
       const res = await request.get('/api/chat/conversations', { 
         params: { user_id: userInfo.id } 
@@ -60,9 +59,9 @@ const Chat = () => {
     } catch (err) {
       console.error('获取会话列表失败', err);
     }
-  };
+  }, [userInfo.id]);
 
-  const getFriends = async () => {
+  const getFriends = useCallback(async () => {
     try {
       const res = await request.get('/api/friend/list', { 
         params: { user_id: userInfo.id } 
@@ -73,9 +72,9 @@ const Chat = () => {
     } catch (err) {
       console.error('获取好友列表失败', err);
     }
-  };
+  }, [userInfo.id]);
 
-  const getFriendApplies = async () => {
+  const getFriendApplies = useCallback(async () => {
     try {
       const res = await request.get('/api/friend/apply/list', { 
         params: { user_id: userInfo.id } 
@@ -86,7 +85,7 @@ const Chat = () => {
     } catch (err) {
       console.error('获取好友申请失败', err);
     }
-  };
+  }, [userInfo.id]);
 
   const handleSearchUser = async () => {
     if (!searchKeyword.trim()) return;
@@ -437,7 +436,7 @@ const Chat = () => {
     getConversations();
     getFriends();
     getFriendApplies();
-  }, []);
+  }, [getConversations, getFriendApplies, getFriends]);
 
   useEffect(() => {
     if (!loadingMore) {
